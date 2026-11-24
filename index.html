@@ -341,6 +341,7 @@ function vResearch(){
   const rows=arr=>arr.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(r=>`<a class="rowt" href="${blob(r.file)}" target="_blank" rel="noopener"><div class="g"><div class="t" style="font-weight:400">${esc(r.slug)}</div><div class="m">${esc(fmtDate(r.date))} · строк-вопросов ${r.questions}${r.failed?' · ниже порога':''}</div></div><span class="circ">→</span></a>`).join('');
   return `<div class="topline"><div class="sp"><h1>Ресёрч и аудиты</h1></div>${updBlock()}</div>
     <div class="cols"><div>
+      <div class="card"><div class="ctitle">Ресёрчи команды</div><div class="rows">${(D.research_extra?.docs||[]).map(d=>`<a class="rowt" href="${blob(d.file)}" target="_blank" rel="noopener"><div class="g"><div class="t" style="font-weight:400">${esc(d.title)}</div><div class="m">${esc(fmtDate(d.date))} · ${esc(d.author)}</div></div><span class="circ">→</span></a>`).join('')||'<div class="empty">Пока нет.</div>'}</div></div>
       <div class="card"><div class="ctitle">Аудиты</div><div class="rows">${D.audits.map(a=>`<a class="rowt" href="${blob(a.file)}" target="_blank" rel="noopener"><div class="g"><div class="t" style="font-weight:400">${esc(a.title)}</div><div class="m">${esc(fmtDate(a.date))}</div></div><span class="circ">→</span></a>`).join('')}</div></div>
       <div class="card"><div class="ctitle">В топ-15 без кликов — по всем статьям</div><div class="tw"><table><tr><th>Запрос</th><th>Статья</th><th class="n">Показы</th><th class="n">Поз.</th></tr>${D.opportunities.map(o=>`<tr><td>${esc(o.query)}</td><td class="s">${esc(o.slug)}</td><td class="n">${o.impr}</td><td class="n">${o.pos}</td></tr>`).join('')}</table></div></div>
     </div><div>
@@ -417,7 +418,7 @@ function vCalendar(){
 const SRC={pain:['Боль из заявок','rose'],painmap:['Матрица болей','C'],keys:['Ключ без статьи','B'],gsc:['Спрос в Google','B'],telegram:['Telegram Макса','N'],masha:['Ресёрч Маши','rose']};
 let ideaFilter='all';
 const personaName=id=>{const p=(D.audiences?.personas||[]).find(x=>x.id===id||('borrower:'+x.id)===id);return p?p.name:(id||'').replace('borrower:','');};
-function ideaTitle(i){return i.source==='pain'?i.cluster:(i.keyword||i.cluster||'');}
+function ideaTitle(i){return (i.source==='pain'||i.source==='masha')?i.cluster:(i.keyword||i.cluster||'');}
 function writePrompt(i){
   return [`/nemax-insight`,
   `Тема: ${ideaTitle(i)}`,
@@ -482,11 +483,20 @@ function vPeople(){
   <div class="card"><div class="rows">${A.confirmed_pains.map(c=>`<div class="rowt"><div class="g"><div class="t">${esc(c.pain)}</div><div class="m">${esc(personaName(c.persona))} · ${esc(c.verdict)}</div>
     <div class="bar" style="margin:8px 0 0;height:8px"><span style="width:${c.apps/mx*100}%;background:var(--blue)"></span></div></div><span class="num" style="font-size:26px">${c.apps}</span></div>`).join('')}</div>
     <p class="sub" style="margin:12px 0 0">${esc(A.content_not_offer||'')}</p></div>
-  ${(D.research_extra?.sections||[]).map(s=>`<div class="head"><h2>${esc(s.title)}</h2></div><div class="card"><p class="sub" style="margin:0 0 10px">${esc(s.source||'')}</p><div class="rows">${(s.items||[]).map(x=>`<div class="rowt"><div class="g"><div class="t" style="font-weight:400">${esc(x.title||x)}</div>${x.note?`<div class="m">${esc(x.note)}</div>`:''}</div></div>`).join('')}</div></div>`).join('')}
+  ${researchBlocks()}
+  ${(D.research_extra?.pains||[]).length?`<div class="head"><h2>Новые боли из ресёрча</h2></div><div class="card"><div class="rows">${D.research_extra.pains.map(p=>`<div class="rowt warm"><div class="g"><div class="t">${esc(p.pain)}</div><div class="m">${esc(personaName(p.persona))} · ${esc(p.number)}</div></div></div>`).join('')}</div></div>`:''}
   <div class="head"><h2>Матрица болей</h2><span class="sp"></span><span class="pill">${(D.pain_map||[]).length} из Notion</span></div>
   <div class="chips">${[['core','SME · девелопер · флиппер'],['all','Все']].concat(auds.map(a=>[a,a.replace('borrower:','').replace('partner:','партнёр: ')])).map(([k,l])=>`<button class="chip ${painAud===k?'on':''}" data-pa="${esc(k)}">${esc(l)}</button>`).join('')}</div>
   <div class="card"><div class="tw"><table><tr><th>Боль</th><th>Цифра</th><th>Почему банк не решит</th><th>Сценарий</th><th>Источник</th></tr>
   ${rows.map(r=>`<tr><td><b style="font-weight:500">${esc(r.pain)}</b><div class="s">${esc(r.audience)}</div></td><td class="s">${esc(r.number)}</td><td class="s">${esc(r.why_bank)}</td><td class="s">${esc(r.use_case||'')}</td><td class="s">${r.source_status==='Verified'?'проверено':`<span class="d-down">${esc(r.source_status)}</span>`}${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener">ссылка</a>`:''}</td></tr>`).join('')}</table></div></div>`;
+}
+
+function researchBlocks(){
+  return (D.research_extra?.sections||[]).map(s=>`<div class="head"><h2>${esc(s.title)}</h2></div><div class="card">
+    <p class="sub" style="margin:0 0 10px">${esc(s.source||'')}</p>${s.intro?`<p style="margin:0 0 12px">${esc(s.intro)}</p>`:''}
+    ${s.table?`<div class="tw"><table><tr>${s.table.head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>${s.table.rows.map(r=>`<tr>${r.map((c,k)=>`<td class="${k&&/^[−+\d]/.test(c)?'n':''}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>`:''}
+    ${s.items?`<div class="rows">${s.items.map(x=>`<div class="rowt ${/^🔴/.test(x.title||'')?'warm':''}"><div class="g"><div class="t" style="font-weight:400">${esc(x.title||x)}</div>${x.note?`<div class="m">${esc(x.note)}</div>`:''}</div></div>`).join('')}</div>`:''}
+    ${s.note?`<p class="sub" style="margin:10px 0 0">${esc(s.note)}</p>`:''}</div>`).join('');
 }
 
 // ---------------------------------------------------------------- Как устроено

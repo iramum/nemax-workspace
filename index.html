@@ -172,6 +172,15 @@ input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
 .cal-month .cday .dh span{visibility:hidden}
 .cal-agenda{display:none}
 @media(max-width:899px){.cal-month{display:none}.cal-agenda{display:block}}
+.ev.ig_live{background:var(--ink);color:#fff}
+.ev.overdue{background:var(--rose-pale)!important;color:#B8374F!important;box-shadow:inset 0 0 0 1px rgba(240,106,133,.6)!important}
+.dlg-bg{position:fixed;inset:0;background:rgba(20,22,31,.18);backdrop-filter:blur(2px);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:900px){.dlg-bg{align-items:center}}
+.dlg{background:var(--white);border-radius:24px 24px 0 0;box-shadow:var(--sh2);padding:22px;width:100%;max-width:460px}
+@media(min-width:900px){.dlg{border-radius:24px}}
+.dlg label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+.dlg input,.dlg select{width:100%;border:0;border-radius:12px;background:var(--white);box-shadow:inset 0 0 0 1px var(--line);padding:12px 14px;font:inherit;font-size:15px}
+.seg{display:flex;gap:6px}.seg button{flex:1}
 .legend-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 </style>
 </head>
@@ -187,7 +196,7 @@ input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
       <ol>
         <li>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token.</li>
         <li>Repository access: только <b>iramum/NEMAX-web</b>.</li>
-        <li>Permissions: <b>Contents — Read-only</b>, <b>Actions — Read and write</b>.</li>
+        <li>Permissions: <b>Contents — Read and write</b> (чтобы сохранять план), <b>Actions — Read and write</b>.</li>
         <li>Скопируй ключ и вставь ниже.</li>
       </ol>
       <input type="password" id="tok" placeholder="github_pat_…" autocomplete="off">
@@ -361,17 +370,76 @@ function vQueue(){
 const vInstagram=()=>`<h1>Инстаграм</h1><div class="card"><div class="ctitle">Следующим этапом</div><p class="sub" style="margin:0">Посты, сторис, статистика и контент-календарь переедут сюда, когда сторона статей устоится.</p></div>`;
 
 // ---------------------------------------------------------------- Календарь
-const KIND={article:'Статья вышла',article_upd:'Статья обновлена',queue:'Статья в очереди',plan:'Статья в плане',ig:'Инстаграм'};
-const KCOL={article:'var(--blue)',article_upd:'var(--bt)',queue:'var(--rose-pale)',plan:'var(--white)',ig:'var(--mist)'};
+const KIND={article:'Статья вышла',article_upd:'Статья обновлена',queue:'Статья в очереди',plan:'Статья в плане',ig_live:'Инстаграм: вышло',ig:'Инстаграм: в плане'};
+const KCOL={article:'var(--blue)',article_upd:'var(--bt)',queue:'var(--rose-pale)',plan:'var(--white)',ig_live:'var(--ink)',ig:'var(--mist)'};
 let calLayers={articles:true,ig:true}, calOffset=0;
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const todayIso=()=>iso(new Date());
-function calEvents(){return (D.calendar||[]).filter(e=>e.kind==='ig'?calLayers.ig:calLayers.articles);}
+function calEvents(){return (D.calendar||[]).filter(e=>(e.kind==='ig'||e.kind==='ig_live')?calLayers.ig:calLayers.articles);}
 function evChip(e){
   const done=e.kind==='ig'&&e.status==='Published';
-  const label=e.kind==='ig'?`${e.format||'ig'} · ${e.title||''}`:(e.title||'');
-  const attrs=e.slug&&e.kind!=='queue'?`data-open="${esc(e.slug)}"`:e.url?`data-href="${esc(e.url)}"`:e.kind==='queue'?'data-tab="queue"':'';
-  return `<button class="ev ${e.kind} ${done?'done':''}" ${attrs} title="${esc(KIND[e.kind]+' · '+(e.status||'')+' · '+(e.title||''))}">${esc(label)}</button>`;
+  const label=(e.overdue?'⟲ ':'')+((e.kind==='ig'||e.kind==='ig_live')?`${e.format||'ig'} · ${e.title||''}`:(e.title||''));
+  const attrs=e.overdue&&e.id?`data-resched="${esc(e.id)}"`:e.slug&&e.kind!=='queue'&&e.kind!=='plan'?`data-open="${esc(e.slug)}"`:e.url?`data-href="${esc(e.url)}"`:e.kind==='queue'?'data-tab="queue"':'';
+  return `<button class="ev ${e.kind} ${done?'done':''} ${e.overdue?'overdue':''}" ${attrs} title="${esc((e.overdue?'Не вышло в срок · ':'')+KIND[e.kind]+' · '+(e.status||'')+' · '+(e.title||''))}">${esc(label)}</button>`;
+}
+function overdueBlock(){
+  const od=(D.calendar||[]).filter(e=>e.overdue).sort((a,b)=>b.date.localeCompare(a.date));
+  const tail=D.stale_notion?`<p class="sub" style="margin:10px 0 0">Хвосты в Notion: ${D.stale_notion} старых строк с прошедшей датой (идеи, брошенные посты) — в календарь не выводятся. Сторис робот не проверяет: инстаграм отдаёт их только 24 часа.</p>`:'';
+  if(!od.length) return tail;
+  return `<div style="margin-top:14px"><div class="m" style="margin-bottom:8px;color:#B8374F;font-weight:500">Не вышло в срок: ${od.length}</div><div class="rows">${capped('od',od,4,e=>`<div class="rowt warm"><div class="g"><div class="t" style="font-weight:400">${esc(e.title)}</div><div class="m">стояло на ${esc(fmtDate(e.date))} · ${esc(e.status||'')}${e.source==='notion'?' · из Notion':''}</div></div>${e.id?`<button class="btn sm fill" data-resched="${esc(e.id)}">Перенести</button>`:`<button class="btn sm ghost" data-plan-from="${esc(e.title)}" data-plan-kind="${e.kind==='ig'?'ig':'article'}">Перенести</button>${e.url?`<a class="btn sm ghost" href="${esc(e.url)}" target="_blank" rel="noopener">Notion →</a>`:''}`}</div>`)}</div>${tail}</div>`;
+}
+
+// ---- план: запись в GitHub (workspace/canon/plan.json) ключом на этом устройстве
+const PLAN_PATH='workspace/canon/plan.json';
+const b64d=s=>decodeURIComponent(escape(atob(s.replace(/\n/g,'')))), b64e=s=>btoa(unescape(encodeURIComponent(s)));
+async function savePlan(mutate,msg){
+  const r=await gh(`/repos/${REPO}/contents/${PLAN_PATH}?ref=main`);
+  if(!r.ok) throw new Error('read '+r.status);
+  const f=await r.json(); const doc=JSON.parse(b64d(f.content)); doc.items=doc.items||[];
+  mutate(doc.items);
+  const w=await gh(`/repos/${REPO}/contents/${PLAN_PATH}`,{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message:msg,content:b64e(JSON.stringify(doc,null,2)+'\n'),sha:f.sha,branch:'main'})});
+  if(w.status===403||w.status===404) throw new Error('perm');
+  if(!w.ok) throw new Error('write '+w.status);
+  return doc.items;
+}
+function planDialog({id,title='',date='',kind='article',slug=''}){
+  const d=document.createElement('div'); d.className='dlg-bg';
+  const tomorrow=iso(new Date(Date.now()+864e5));
+  d.innerHTML=`<div class="dlg"><h2 style="margin-bottom:6px">${id?'Перенести':'Запланировать'}</h2>
+    <label>Что выходит</label><input id="pl-t" value="${esc(title)}" placeholder="Тема статьи или поста">
+    <label>Тип</label><div class="seg"><button class="chip ${kind==='article'?'on':''}" data-k="article">Статья</button><button class="chip ${kind==='ig'?'on':''}" data-k="ig">Инстаграм</button></div>
+    <label>Дата выхода</label><input id="pl-d" type="date" value="${esc(date||tomorrow)}">
+    <p class="sub" id="pl-msg" style="margin:10px 0 0"></p>
+    <div class="acts"><button class="btn fill" id="pl-save">Сохранить</button><button class="btn ghost" id="pl-x">Отмена</button></div></div>`;
+  document.body.appendChild(d);
+  let k=kind;
+  d.addEventListener('click',async ev=>{
+    const t=ev.target;
+    if(t===d||t.id==='pl-x'){d.remove();return;}
+    if(t.dataset.k){k=t.dataset.k;d.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',b===t));return;}
+    if(t.id==='pl-save'){
+      const tt=d.querySelector('#pl-t').value.trim(), dd=d.querySelector('#pl-d').value;
+      if(!tt||!dd){d.querySelector('#pl-msg').textContent='Нужны тема и дата.';return;}
+      t.disabled=true; t.textContent='Сохраняю…';
+      if(LOCAL){d.querySelector('#pl-msg').textContent='Локальный просмотр: в GitHub не пишу.';t.disabled=false;t.textContent='Сохранить';return;}
+      try{
+        const nid=id||('p'+Date.now().toString(36));
+        await savePlan(items=>{
+          const ex=items.find(x=>x.id===nid);
+          if(ex){ex.date=dd;ex.title=tt;ex.kind=k;(ex.moved=ex.moved||[]).push({to:dd,at:todayIso()});}
+          else items.push({id:nid,date:dd,kind:k,title:tt,slug:slug||null,created:todayIso()});
+        }, `plan: ${id?'перенос':'новая запись'} ${dd} — ${tt.slice(0,60)}`);
+        D.calendar=(D.calendar||[]).filter(e=>e.id!==nid);
+        D.calendar.push({date:dd,kind:k==='article'?'plan':'ig',title:tt,slug:slug||null,status:'В плане',overdue:false,source:'workspace',id:nid});
+        D.calendar.sort((a,b)=>a.date.localeCompare(b.date));
+        d.remove(); render();
+      }catch(e){
+        t.disabled=false;t.textContent='Сохранить';
+        d.querySelector('#pl-msg').innerHTML=e.message==='perm'?'GitHub не дал записать. Ключу на этом устройстве нужно право <b>Contents: Read and write</b> — сделай новый ключ и вставь заново.':'Не сохранилось: '+esc(e.message);
+      }
+    }
+  });
 }
 function dayCell(d,evs,extra=''){
   const t=iso(d), wd=d.toLocaleDateString('ru-RU',{weekday:'short'});
@@ -381,12 +449,13 @@ function dayCell(d,evs,extra=''){
 function calStrip(){
   const evs=calEvents(), now=new Date(), mon=new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7));
   const days=[...Array(14)].map((_,k)=>{const d=new Date(mon);d.setDate(mon.getDate()+k);return d;});
-  return `<div class="card"><div class="ctitle">Эта и следующая неделя<span class="sp"></span><button class="btn sm ghost" data-tab="calendar">Весь календарь →</button></div>
-    <div class="cal-strip">${days.slice(0,7).map(d=>dayCell(d,evs)).join('')}</div><div style="height:8px"></div><div class="cal-strip">${days.slice(7).map(d=>dayCell(d,evs)).join('')}</div>${calLegend()}</div>`;
+  return `<div class="card"><div class="ctitle">Эта и следующая неделя<span class="sp"></span><button class="btn sm fill" data-plan-new="1">+ Запланировать</button><button class="btn sm ghost" data-tab="calendar">Весь календарь →</button></div>
+    <div class="cal-strip">${days.slice(0,7).map(d=>dayCell(d,evs)).join('')}</div><div style="height:8px"></div><div class="cal-strip">${days.slice(7).map(d=>dayCell(d,evs)).join('')}</div>${overdueBlock()}${calLegend()}</div>`;
 }
 function calLegend(){
   return `<div class="legend" style="margin-top:12px;font-size:12px;color:var(--body)">${Object.keys(KIND).map(k=>`<span><span class="legend-dot" style="background:${KCOL[k]};${k==='plan'||k==='article_upd'?'box-shadow:inset 0 0 0 1px var(--blue)':''}"></span>${KIND[k]}</span>`).join('')}</div>
-  ${D.calendar_notion?'':'<p class="sub" style="margin:10px 0 0">🔴 План статей и инстаграм появятся, когда в GitHub будет ключ Notion (шаг для тебя — внизу «Как устроено»).</p>'}`;
+  ${D.calendar_ig?'':'<p class="sub" style="margin:10px 0 0">🔴 Что вышло в инстаграме, робот покажет, когда в GitHub будет ключ инстаграма (шаг — в «Как устроено»).</p>'}
+  ${D.calendar_notion?'':'<p class="sub" style="margin:4px 0 0">🔴 Посты в плане из Notion появятся, когда в GitHub будет ключ Notion.</p>'}`;
 }
 function calMonth(){
   const evs=calEvents(), base=new Date(); base.setDate(1); base.setMonth(base.getMonth()+calOffset);
@@ -397,10 +466,10 @@ function calMonth(){
   const monthEv=evs.filter(e=>e.date.slice(0,7)===iso(base).slice(0,7));
   const byDay={};monthEv.forEach(e=>(byDay[e.date]=byDay[e.date]||[]).push(e));
   return `<div class="card"><div class="ctitle"><button class="btn sm ghost" data-cal="-1">←</button><span style="min-width:150px;text-align:center;text-transform:capitalize">${esc(title)}</span><button class="btn sm ghost" data-cal="1">→</button><span class="sp"></span>
-    <button class="chip ${calLayers.articles?'on':''}" data-layer="articles">Статьи</button><button class="chip ${calLayers.ig?'on':''}" data-layer="ig">Инстаграм</button></div>
+    <button class="chip ${calLayers.articles?'on':''}" data-layer="articles">Статьи</button><button class="chip ${calLayers.ig?'on':''}" data-layer="ig">Инстаграм</button><button class="btn sm fill" data-plan-new="1">+ Запланировать</button></div>
     <div class="cal-month">${['пн','вт','ср','чт','пт','сб','вс'].map(w=>`<div class="wd">${w}</div>`).join('')}${cells.map(d=>dayCell(d,evs,inMonth(d)?'':'out')).join('')}</div>
     <div class="cal-agenda rows">${Object.keys(byDay).sort().map(day=>`<div class="rowt" style="flex-direction:column;align-items:stretch"><div class="m" style="text-transform:capitalize">${esc(new Date(day).toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'}))}</div>${byDay[day].map(evChip).join('')}</div>`).join('')||'<div class="empty">В этом месяце пусто.</div>'}</div>
-    ${calLegend()}</div>`;
+    ${overdueBlock()}${calLegend()}</div>`;
 }
 function vCalendar(){
   const ev=D.calendar||[], m=todayIso().slice(0,7);
@@ -457,7 +526,7 @@ function ideaCard({i,ix}){
     <div style="font-weight:500;font-size:16px">${esc(ideaTitle(i))}</div>
     ${i.variants&&i.variants.length?`<div class="m" style="color:var(--muted);font-size:12px;margin-top:4px">${esc(i.variants.join(' · '))}</div>`:''}
     <p class="sub" style="margin:8px 0 0">${esc(i.why)}</p>
-    <div class="acts"><button class="btn sm fill" data-write="${ix}">Написать статью →</button>${i.url?`<a class="btn sm ghost" href="${esc(i.url)}" target="_blank" rel="noopener">Источник →</a>`:''}</div></div>`;
+    <div class="acts"><button class="btn sm fill" data-write="${ix}">Написать статью →</button><button class="btn sm ghost" data-plan-from="${esc(ideaTitle(i))}" data-plan-kind="article">Запланировать</button>${i.url?`<a class="btn sm ghost" href="${esc(i.url)}" target="_blank" rel="noopener">Источник →</a>`:''}</div></div>`;
 }
 
 // ---------------------------------------------------------------- Аудитории
@@ -515,6 +584,7 @@ function vHow(){
   const lab={auto:['само','up'],claude:['Claude','B'],you:['ты','rose']};
   return `<h1>Как устроено</h1><p class="sub">Путь статьи от темы до замера. «Само» — робот без участия, «Claude» — по кнопке, «ты» — твой шаг.</p>
   <div class="card"><div class="rows">${PIPE.map((p,k)=>`<div class="rowt"><span class="num" style="font-size:22px;width:34px">${String(k+1).padStart(2,'0')}</span><div class="g"><div class="t">${esc(p[0])}</div><div class="m">${esc(p[1])}</div><div class="m" style="color:var(--muted)">${esc(p[2])}</div></div><span class="pill ${lab[p[3]][1]}">${lab[p[3]][0]}</span></div>`).join('')}</div></div>
+  ${D.calendar_ig?'':`<div class="head"><h2>Шаг для тебя: ключ инстаграма</h2></div><div class="card"><p class="sub" style="margin:0 0 8px">Чтобы робот сам видел, что вышло в инстаграме, один раз в Claude Code на Mac отправь:</p><div class="rowt" style="font-family:monospace;font-size:12px;word-break:break-all">! gh secret set META_CONFIG_JSON -R iramum/NEMAX-web &lt; ~/.config/nemax/meta_config.json</div><p class="sub" style="margin:8px 0 0">Тот же ключ, которым работает трекер. Робот только читает ленту.</p></div>`}
   ${D.calendar_notion?'':`<div class="head"><h2>Шаг для тебя: ключ Notion</h2></div><div class="card"><p class="sub" style="margin:0 0 8px">Чтобы робот видел план статей и инстаграм из Notion Content Calendar, один раз в Claude Code на Mac отправь:</p><div class="rowt" style="font-family:monospace;font-size:12px;word-break:break-all">! python3 -c "import json,sys;sys.stdout.write(json.load(open('/Users/iratsykhanskaya/.antigravity-panel/config.json'))['nwr_token'])" | gh secret set NOTION_TOKEN -R iramum/NEMAX-web</div><p class="sub" style="margin:8px 0 0">Ключ уходит из файла прямо в GitHub Secrets, на экран не выводится. Это та же узкая интеграция, которой понедельничный отчёт читает календарь.</p></div>`}
   <div class="head"><h2>Скиллы</h2></div><div class="card"><div class="rows">${SKILLS.map(s=>`<a class="rowt" href="${blob('.claude/skills/'+s[0]+'/SKILL.md')}" target="_blank" rel="noopener"><div class="g"><div class="t">/${esc(s[0])}</div><div class="m">${esc(s[1])}</div></div><span class="circ">→</span></a>`).join('')}</div></div>
   <div class="head"><h2>Где лежит правда</h2></div><div class="card"><div class="rows">
@@ -536,7 +606,10 @@ function render(){
   const r=$('#refresh'); if(r) r.onclick=refresh;
 }
 document.addEventListener('click',e=>{
-  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-pa],[data-write],[data-cal],[data-layer],[data-href]'); if(!b) return;
+  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-pa],[data-write],[data-cal],[data-layer],[data-href],[data-plan-new],[data-plan-from],[data-resched]'); if(!b) return;
+  if(b.dataset.planNew){planDialog({});return;}
+  if(b.dataset.planFrom!=null){planDialog({title:b.dataset.planFrom,kind:b.dataset.planKind||'article'});return;}
+  if(b.dataset.resched){const it=(D.calendar||[]).find(x=>x.id===b.dataset.resched);if(it)planDialog({id:it.id,title:it.title,kind:it.kind==='ig'?'ig':'article',slug:it.slug||''});return;}
   if(b.dataset.href){window.open(b.dataset.href,'_blank','noopener');return;}
   if(b.dataset.cal){calOffset+=+b.dataset.cal;render();return;}
   if(b.dataset.layer){calLayers[b.dataset.layer]=!calLayers[b.dataset.layer];render();return;}

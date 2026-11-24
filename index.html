@@ -150,6 +150,29 @@ input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
 .setup ol{padding-left:18px;color:var(--body)}
 .setup li{margin-bottom:6px}
 .hide{display:none!important}
+/* календарь */
+.cal-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+@media(max-width:899px){.cal-strip{display:flex;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px 4px}.cal-strip::-webkit-scrollbar{display:none}.cal-strip .cday{min-width:120px}}
+.cday{background:var(--mist);border-radius:var(--r2);padding:10px;min-height:92px;display:flex;flex-direction:column;gap:4px}
+.cday.today{background:var(--bt);box-shadow:inset 0 0 0 2px var(--blue)}
+.cday.past{opacity:.72}
+.cday .dh{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:2px}
+.cday .dh b{font-weight:500;font-size:15px;color:var(--ink)}
+.ev{display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:4px 7px;font-size:11px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--white);color:var(--ink)}
+.ev.article{background:var(--blue);color:#fff}
+.ev.article_upd{background:var(--white);color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
+.ev.queue{background:var(--rose-pale);color:#B8374F}
+.ev.plan{background:var(--white);color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue);border-style:dashed}
+.ev.ig{background:var(--white);color:var(--body)}
+.ev.ig.done{color:var(--muted)}
+.cal-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal-month .wd{font-size:11px;color:var(--muted);padding:0 4px}
+.cal-month .cday{min-height:110px}
+.cal-month .cday.out{background:transparent}
+.cal-month .cday .dh span{visibility:hidden}
+.cal-agenda{display:none}
+@media(max-width:899px){.cal-month{display:none}.cal-agenda{display:block}}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 </style>
 </head>
 <body>
@@ -181,8 +204,8 @@ const REPO='iramum/NEMAX-web', DATA_BRANCH='workspace-data', WF='workspace-colle
 const GL={A:'А',B:'Б',C:'В',D:'Г',N:'Н'};
 const GN={A:'Работает',B:'Топ-10, нет кликов',C:'Позиции 11–30',D:'Погасла',N:'Новая'};
 const GCOL={A:'#002CD2',B:'#7D93F5',C:'#C4CEFA',D:'#F06A85',N:'#14161F'};
-const NAV=[['today','Сегодня','Твой день и что горит'],['ideas','Темы','Что написать дальше'],['articles','Статьи','Все статьи и их цифры'],['people','Аудитории','Кто клиент и что болит'],['keywords','Ключи','База ключей SEO'],['research','Ресёрч','Аудиты, Reddit, AI-запросы'],['queue','Очередь','Что ждёт выхода'],['how','Как устроено','Скиллы и шаги под капотом'],['instagram','Инстаграм','Позже']];
-const MOBILE_NAV=['today','ideas','articles','people','research'];
+const NAV=[['today','Сегодня','Твой день и что горит'],['calendar','Календарь','Что вышло и что в плане'],['ideas','Темы','Что написать дальше'],['articles','Статьи','Все статьи и их цифры'],['people','Аудитории','Кто клиент и что болит'],['keywords','Ключи','База ключей SEO'],['research','Ресёрч','Аудиты, Reddit, AI-запросы'],['queue','Очередь','Что ждёт выхода'],['how','Как устроено','Скиллы и шаги под капотом'],['instagram','Инстаграм','Позже']];
+const MOBILE_NAV=['today','calendar','ideas','articles','people'];
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
@@ -224,6 +247,7 @@ function vToday(){
     <button class="tile" data-go="articles"><span class="circ">→</span><div class="l">Показы в Google</div><div class="v num">${fmt(t.impr)}</div><div class="w">${delta(t.impr,t.impr_prev)} к прошлым 28</div><div class="s">все статьи</div></button>
     <button class="tile ${t.apply_clicks<t.apply_clicks_prev?'warm':''}" data-go="articles"><span class="circ">→</span><div class="l">Клики в заявку</div><div class="v num">${t.apply_clicks}</div><div class="w">${delta(t.apply_clicks,t.apply_clicks_prev)} к прошлым 28</div><div class="s">визитов со статей ${t.sessions} (только с согласием cookie)</div></button>
   </div>`;
+  h+=calStrip();
   h+=`<div class="cols"><div>
     <div class="card"><div class="ctitle">План на день<span class="sp"></span><span class="pill">${D.plan.length}</span></div><div class="rows">
     ${D.plan.map(p=>{const a=art(p.slug);return `<div class="rowt ${p.action==='gsc'?'warm':''}"><div class="g"><div class="t">${esc(planRu(p))}</div><div class="m">${esc(a.title||p.slug)}</div><div class="m">${esc(p.why)}</div>
@@ -290,6 +314,7 @@ function articleCard(a){
 function vArticles(){
   const list=D.articles.filter(a=>artFilter==='all'||a.group===artFilter);
   return `<div class="topline"><div class="sp"><h1>Статьи</h1></div>${updBlock()}</div>
+    ${calMonth()}
     <p class="sub">Google — 28 дней по ${esc(fmtDate(D.gsc_last_day))} против прошлых 28. GA считает только тех, кто принял cookie.</p>
     <div class="chips">${[['all','Все · '+D.articles.length]].concat(Object.keys(GN).map(g=>[g,`${GL[g]} ${GN[g]} · ${D.totals.groups[g]||0}`])).map(([k,l])=>`<button class="chip ${artFilter===k?'on':''}" data-af="${k}">${esc(l)}</button>`).join('')}</div>
     ${list.map(articleCard).join('')}`;
@@ -333,6 +358,60 @@ function vQueue(){
       ${q.live?`<div class="acts"><a class="btn sm fill" href="https://nemax-finance.com/article/${esc(q.slug)}" target="_blank" rel="noopener">Открыть →</a>${gscBtn(art(q.slug))}</div>`:''}</div>`).join('')||'<div class="card empty">Очередь пуста.</div>'}`;
 }
 const vInstagram=()=>`<h1>Инстаграм</h1><div class="card"><div class="ctitle">Следующим этапом</div><p class="sub" style="margin:0">Посты, сторис, статистика и контент-календарь переедут сюда, когда сторона статей устоится.</p></div>`;
+
+// ---------------------------------------------------------------- Календарь
+const KIND={article:'Статья вышла',article_upd:'Статья обновлена',queue:'Статья в очереди',plan:'Статья в плане',ig:'Инстаграм'};
+const KCOL={article:'var(--blue)',article_upd:'var(--bt)',queue:'var(--rose-pale)',plan:'var(--white)',ig:'var(--mist)'};
+let calLayers={articles:true,ig:true}, calOffset=0;
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayIso=()=>iso(new Date());
+function calEvents(){return (D.calendar||[]).filter(e=>e.kind==='ig'?calLayers.ig:calLayers.articles);}
+function evChip(e){
+  const done=e.kind==='ig'&&e.status==='Published';
+  const label=e.kind==='ig'?`${e.format||'ig'} · ${e.title||''}`:(e.title||'');
+  const attrs=e.slug&&e.kind!=='queue'?`data-open="${esc(e.slug)}"`:e.url?`data-href="${esc(e.url)}"`:e.kind==='queue'?'data-tab="queue"':'';
+  return `<button class="ev ${e.kind} ${done?'done':''}" ${attrs} title="${esc(KIND[e.kind]+' · '+(e.status||'')+' · '+(e.title||''))}">${esc(label)}</button>`;
+}
+function dayCell(d,evs,extra=''){
+  const t=iso(d), wd=d.toLocaleDateString('ru-RU',{weekday:'short'});
+  const list=evs.filter(e=>e.date===t);
+  return `<div class="cday ${t===todayIso()?'today':t<todayIso()?'past':''} ${extra}"><div class="dh"><span>${wd}</span><b>${d.getDate()}</b></div>${list.slice(0,5).map(evChip).join('')}${list.length>5?`<span class="spcap">ещё ${list.length-5}</span>`:''}</div>`;
+}
+function calStrip(){
+  const evs=calEvents(), now=new Date(), mon=new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7));
+  const days=[...Array(14)].map((_,k)=>{const d=new Date(mon);d.setDate(mon.getDate()+k);return d;});
+  return `<div class="card"><div class="ctitle">Эта и следующая неделя<span class="sp"></span><button class="btn sm ghost" data-tab="calendar">Весь календарь →</button></div>
+    <div class="cal-strip">${days.slice(0,7).map(d=>dayCell(d,evs)).join('')}</div><div style="height:8px"></div><div class="cal-strip">${days.slice(7).map(d=>dayCell(d,evs)).join('')}</div>${calLegend()}</div>`;
+}
+function calLegend(){
+  return `<div class="legend" style="margin-top:12px;font-size:12px;color:var(--body)">${Object.keys(KIND).map(k=>`<span><span class="legend-dot" style="background:${KCOL[k]};${k==='plan'||k==='article_upd'?'box-shadow:inset 0 0 0 1px var(--blue)':''}"></span>${KIND[k]}</span>`).join('')}</div>
+  ${D.calendar_notion?'':'<p class="sub" style="margin:10px 0 0">🔴 План статей и инстаграм появятся, когда в GitHub будет ключ Notion (шаг для тебя — внизу «Как устроено»).</p>'}`;
+}
+function calMonth(){
+  const evs=calEvents(), base=new Date(); base.setDate(1); base.setMonth(base.getMonth()+calOffset);
+  const title=base.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+  const start=new Date(base); start.setDate(1-((base.getDay()+6)%7));
+  const cells=[...Array(42)].map((_,k)=>{const d=new Date(start);d.setDate(start.getDate()+k);return d;});
+  const inMonth=d=>d.getMonth()===base.getMonth();
+  const monthEv=evs.filter(e=>e.date.slice(0,7)===iso(base).slice(0,7));
+  const byDay={};monthEv.forEach(e=>(byDay[e.date]=byDay[e.date]||[]).push(e));
+  return `<div class="card"><div class="ctitle"><button class="btn sm ghost" data-cal="-1">←</button><span style="min-width:150px;text-align:center;text-transform:capitalize">${esc(title)}</span><button class="btn sm ghost" data-cal="1">→</button><span class="sp"></span>
+    <button class="chip ${calLayers.articles?'on':''}" data-layer="articles">Статьи</button><button class="chip ${calLayers.ig?'on':''}" data-layer="ig">Инстаграм</button></div>
+    <div class="cal-month">${['пн','вт','ср','чт','пт','сб','вс'].map(w=>`<div class="wd">${w}</div>`).join('')}${cells.map(d=>dayCell(d,evs,inMonth(d)?'':'out')).join('')}</div>
+    <div class="cal-agenda rows">${Object.keys(byDay).sort().map(day=>`<div class="rowt" style="flex-direction:column;align-items:stretch"><div class="m" style="text-transform:capitalize">${esc(new Date(day).toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'}))}</div>${byDay[day].map(evChip).join('')}</div>`).join('')||'<div class="empty">В этом месяце пусто.</div>'}</div>
+    ${calLegend()}</div>`;
+}
+function vCalendar(){
+  const ev=D.calendar||[], m=todayIso().slice(0,7);
+  const n=k=>ev.filter(e=>e.kind===k&&e.date.slice(0,7)===m).length;
+  return `<div class="topline"><div class="sp"><h1>Календарь</h1></div>${updBlock()}</div>
+  <p class="sub">Статьи — даты выхода и обновлений с сайта, очередь из GitHub, план из Notion (метка 📝 Insight). Инстаграм — посты, сторис и рилсы из Notion Content Calendar со статусами. Чтобы запланировать статью, поставь ей дату в Notion с меткой Insight — утром она появится здесь.</p>
+  <div class="tiles"><div class="tile"><div class="l">Статей вышло в этом месяце</div><div class="v num">${n('article')}</div></div>
+   <div class="tile"><div class="l">Обновлено статей</div><div class="v num">${n('article_upd')}</div></div>
+   <div class="tile"><div class="l">В плане и очереди</div><div class="v num">${ev.filter(e=>(e.kind==='plan'||e.kind==='queue')&&e.date>=todayIso()).length}</div></div>
+   <div class="tile"><div class="l">Инстаграм в этом месяце</div><div class="v num">${n('ig')}</div></div></div>
+  ${calMonth()}`;
+}
 
 // ---------------------------------------------------------------- Темы
 const SRC={pain:['Боль из заявок','rose'],painmap:['Матрица болей','C'],keys:['Ключ без статьи','B'],gsc:['Спрос в Google','B'],telegram:['Telegram Макса','N'],masha:['Ресёрч Маши','rose']};
@@ -426,6 +505,7 @@ function vHow(){
   const lab={auto:['само','up'],claude:['Claude','B'],you:['ты','rose']};
   return `<h1>Как устроено</h1><p class="sub">Путь статьи от темы до замера. «Само» — робот без участия, «Claude» — по кнопке, «ты» — твой шаг.</p>
   <div class="card"><div class="rows">${PIPE.map((p,k)=>`<div class="rowt"><span class="num" style="font-size:22px;width:34px">${String(k+1).padStart(2,'0')}</span><div class="g"><div class="t">${esc(p[0])}</div><div class="m">${esc(p[1])}</div><div class="m" style="color:var(--muted)">${esc(p[2])}</div></div><span class="pill ${lab[p[3]][1]}">${lab[p[3]][0]}</span></div>`).join('')}</div></div>
+  ${D.calendar_notion?'':`<div class="head"><h2>Шаг для тебя: ключ Notion</h2></div><div class="card"><p class="sub" style="margin:0 0 8px">Чтобы робот видел план статей и инстаграм из Notion Content Calendar, один раз в Claude Code на Mac отправь:</p><div class="rowt" style="font-family:monospace;font-size:12px;word-break:break-all">! python3 -c "import json,sys;sys.stdout.write(json.load(open('/Users/iratsykhanskaya/.antigravity-panel/config.json'))['nwr_token'])" | gh secret set NOTION_TOKEN -R iramum/NEMAX-web</div><p class="sub" style="margin:8px 0 0">Ключ уходит из файла прямо в GitHub Secrets, на экран не выводится. Это та же узкая интеграция, которой понедельничный отчёт читает календарь.</p></div>`}
   <div class="head"><h2>Скиллы</h2></div><div class="card"><div class="rows">${SKILLS.map(s=>`<a class="rowt" href="${blob('.claude/skills/'+s[0]+'/SKILL.md')}" target="_blank" rel="noopener"><div class="g"><div class="t">/${esc(s[0])}</div><div class="m">${esc(s[1])}</div></div><span class="circ">→</span></a>`).join('')}</div></div>
   <div class="head"><h2>Где лежит правда</h2></div><div class="card"><div class="rows">
    ${[['Реестр статей','02_WEBSITE:/seo/ARTICLE_REGISTRY.md'],['Очередь','docs/PUBLISH_QUEUE.md'],['Аудитории и боли','workspace/canon/audiences.json'],['Матрица болей (выгрузка Notion)','workspace/canon/pain_map.json'],['База ключей','02_WEBSITE:/seo/keywords_clean.csv'],['Правила статей','docs/article-canon/memory/INDEX.md'],['Робот','workspace/collect.py']].map(x=>`<a class="rowt" href="${blob(x[1])}" target="_blank" rel="noopener"><div class="g"><div class="t" style="font-weight:400">${esc(x[0])}</div><div class="m">${esc(x[1])}</div></div><span class="circ">→</span></a>`).join('')}</div></div>`;
@@ -442,11 +522,14 @@ function navHtml(){
 }
 function render(){
   navHtml();
-  $('#view').innerHTML=({today:vToday,ideas:vIdeas,articles:vArticles,people:vPeople,keywords:vKeywords,research:vResearch,queue:vQueue,how:vHow,more:vMore,instagram:vInstagram})[tab]();
+  $('#view').innerHTML=({today:vToday,calendar:vCalendar,ideas:vIdeas,articles:vArticles,people:vPeople,keywords:vKeywords,research:vResearch,queue:vQueue,how:vHow,more:vMore,instagram:vInstagram})[tab]();
   const r=$('#refresh'); if(r) r.onclick=refresh;
 }
 document.addEventListener('click',e=>{
-  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-pa],[data-write]'); if(!b) return;
+  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-pa],[data-write],[data-cal],[data-layer],[data-href]'); if(!b) return;
+  if(b.dataset.href){window.open(b.dataset.href,'_blank','noopener');return;}
+  if(b.dataset.cal){calOffset+=+b.dataset.cal;render();return;}
+  if(b.dataset.layer){calLayers[b.dataset.layer]=!calLayers[b.dataset.layer];render();return;}
   if(b.dataset.write!=null){startWrite(+b.dataset.write);return;}
   if(b.dataset.if){ideaFilter=b.dataset.if;render();return;}
   if(b.dataset.pa){painAud=b.dataset.pa;render();return;}

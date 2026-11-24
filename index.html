@@ -181,7 +181,8 @@ const REPO='iramum/NEMAX-web', DATA_BRANCH='workspace-data', WF='workspace-colle
 const GL={A:'А',B:'Б',C:'В',D:'Г',N:'Н'};
 const GN={A:'Работает',B:'Топ-10, нет кликов',C:'Позиции 11–30',D:'Погасла',N:'Новая'};
 const GCOL={A:'#002CD2',B:'#7D93F5',C:'#C4CEFA',D:'#F06A85',N:'#14161F'};
-const NAV=[['today','Сегодня','Твой день и что горит'],['articles','Статьи','Все статьи и их цифры'],['keywords','Ключи','База ключей SEO'],['research','Ресёрч','Аудиты, Reddit, AI-запросы'],['queue','Очередь','Что ждёт выхода'],['instagram','Инстаграм','Позже']];
+const NAV=[['today','Сегодня','Твой день и что горит'],['ideas','Темы','Что написать дальше'],['articles','Статьи','Все статьи и их цифры'],['people','Аудитории','Кто клиент и что болит'],['keywords','Ключи','База ключей SEO'],['research','Ресёрч','Аудиты, Reddit, AI-запросы'],['queue','Очередь','Что ждёт выхода'],['how','Как устроено','Скиллы и шаги под капотом'],['instagram','Инстаграм','Позже']];
+const MOBILE_NAV=['today','ideas','articles','people','research'];
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
@@ -333,21 +334,122 @@ function vQueue(){
 }
 const vInstagram=()=>`<h1>Инстаграм</h1><div class="card"><div class="ctitle">Следующим этапом</div><p class="sub" style="margin:0">Посты, сторис, статистика и контент-календарь переедут сюда, когда сторона статей устоится.</p></div>`;
 
+// ---------------------------------------------------------------- Темы
+const SRC={pain:['Боль из заявок','rose'],painmap:['Матрица болей','C'],keys:['Ключ без статьи','B'],gsc:['Спрос в Google','B'],telegram:['Telegram Макса','N'],masha:['Ресёрч Маши','rose']};
+let ideaFilter='all';
+const personaName=id=>{const p=(D.audiences?.personas||[]).find(x=>x.id===id||('borrower:'+x.id)===id);return p?p.name:(id||'').replace('borrower:','');};
+function ideaTitle(i){return i.source==='pain'?i.cluster:(i.keyword||i.cluster||'');}
+function writePrompt(i){
+  return [`/nemax-insight`,
+  `Тема: ${ideaTitle(i)}`,
+  i.variants&&i.variants.length?`Варианты запроса: ${i.variants.join('; ')}`:'',
+  `Откуда идея: ${SRC[i.source]?.[0]||i.source} — ${i.why}`,
+  i.audience?`Аудитория: ${personaName(i.audience)}`:'',
+  i.url?`Источник: ${i.url}`:'',
+  ``,
+  `Перед брифом: CLAUDE.md репо целиком, перегенерировать ARTICLE_REGISTRY и проверить дедуп темы, docs/PUBLISH_QUEUE.md, workspace/canon/audiences.json (основной клиент — SME/HNWI/флипперы/девелоперы/handover).`,
+  `Если тема уже закрыта живой статьёй — скажи и предложи донастройку вместо новой.`,
+  `После брифа остановись и покажи мне 🔴-пункты. Обложку — 2–3 варианта в Figma на выбор. Публикация только по моему «ок».`].filter(Boolean).join('\n');
+}
+function ideasAll(){
+  if(!D._ideas) D._ideas=(D.research_extra?.ideas||[]).map(x=>({...x,source:'masha'})).concat(D.ideas||[]);
+  return D._ideas;
+}
+async function startWrite(idx){
+  const txt=writePrompt(ideasAll()[idx]);
+  try{await navigator.clipboard.writeText(txt);}catch(e){prompt('Скопируй задание:',txt);}
+  window.open('https://claude.ai/code','_blank','noopener');
+}
+function vIdeas(){
+  const all=ideasAll();
+  const list=all.map((i,ix)=>({i,ix})).filter(({i})=>ideaFilter==='all'||i.source===ideaFilter);
+  const counts={};all.forEach(i=>counts[i.source]=(counts[i.source]||0)+1);
+  return `<div class="topline"><div class="sp"><h1>Что написать дальше</h1></div>${updBlock()}</div>
+  <p class="sub">Робот каждое утро сверяет ключи, спрос в Google, боли из заявок и матрицы, свежие дайджесты Макса с уже вышедшими статьями. Здесь только то, чего на сайте ещё нет. «Написать статью» копирует готовое задание и открывает Claude Code — вставь и отправь.</p>
+  <div class="chips">${[['all','Все · '+all.length]].concat(Object.keys(SRC).filter(k=>counts[k]).map(k=>[k,SRC[k][0]+' · '+counts[k]])).map(([k,l])=>`<button class="chip ${ideaFilter===k?'on':''}" data-if="${k}">${esc(l)}</button>`).join('')}</div>
+  <div class="cols"><div>${list.filter((_,k)=>k%2===0).map(ideaCard).join('')}</div><div>${list.filter((_,k)=>k%2===1).map(ideaCard).join('')}</div></div>
+  <div class="head"><h2>Лента Макса</h2></div>
+  ${(D.telegram||[]).slice(0,6).map(p=>`<div class="card"><div class="ctitle">${esc(fmtDate(p.date))}<span class="sp"></span><a class="btn sm ghost" href="${esc(p.url)}" target="_blank" rel="noopener">Открыть пост →</a></div>
+    ${p.headlines.length?`<div class="rows">${p.headlines.map(h=>`<div class="rowt"><div class="g"><div class="m" style="color:var(--ink)">${esc(h)}</div></div></div>`).join('')}</div>`:`<p class="sub" style="margin:0">${esc(p.text.slice(0,280))}…</p>`}</div>`).join('')}`;
+}
+function ideaCard({i,ix}){
+  return `<div class="card"><div class="ctitle" style="margin-bottom:8px"><span class="pill ${SRC[i.source]?.[1]||''}">${esc(SRC[i.source]?.[0]||i.source)}</span><span class="sp"></span>${i.audience?`<span class="pill">${esc(personaName(i.audience))}</span>`:''}</div>
+    <div style="font-weight:500;font-size:16px">${esc(ideaTitle(i))}</div>
+    ${i.variants&&i.variants.length?`<div class="m" style="color:var(--muted);font-size:12px;margin-top:4px">${esc(i.variants.join(' · '))}</div>`:''}
+    <p class="sub" style="margin:8px 0 0">${esc(i.why)}</p>
+    <div class="acts"><button class="btn sm fill" data-write="${ix}">Написать статью →</button>${i.url?`<a class="btn sm ghost" href="${esc(i.url)}" target="_blank" rel="noopener">Источник →</a>`:''}</div></div>`;
+}
+
+// ---------------------------------------------------------------- Аудитории
+let painAud='core';
+function vPeople(){
+  const A=D.audiences||{personas:[],confirmed_pains:[]};
+  const rows=(D.pain_map||[]).filter(r=>painAud==='all'||(painAud==='core'?['borrower:SME','borrower:developer','borrower:flipper'].includes(r.audience):r.audience===painAud));
+  const auds=[...new Set((D.pain_map||[]).map(r=>r.audience))].sort();
+  const mx=Math.max(...A.confirmed_pains.map(c=>c.apps),1);
+  return `<div class="topline"><div class="sp"><h1>Аудитории и боли</h1></div>${updBlock()}</div>
+  <div class="card" style="background:var(--blue);color:#fff;box-shadow:0 18px 40px rgba(0,44,210,.28)"><div style="font-size:13px;color:rgba(255,255,255,.78)">Правило по клиенту, твоё слово 19.11</div><div style="font-size:18px;font-weight:300;margin-top:6px;line-height:1.4">${esc(A.rule||'')}</div></div>
+  ${A.conflict?`<div class="err">${esc(A.conflict)}</div>`:''}
+  <div class="head"><h2>Персоны</h2></div>
+  <div class="cols">${[0,1].map(c=>`<div>${A.personas.filter((_,k)=>k%2===c).map(p=>`<div class="card"><div class="ctitle" style="margin-bottom:6px">${esc(p.name)}<span class="sp"></span><span class="pill ${p.weight.startsWith('основной')?'A':''}">${esc(p.weight.split(' (')[0])}</span></div>
+    <p class="sub" style="margin:0 0 10px">${esc(p.who)}</p>
+    <div class="rows">
+      <div class="rowt"><div class="g"><div class="m">Что ему нужно</div><div class="t" style="font-weight:400">${esc(p.jtbd)}</div></div></div>
+      <div class="rowt warm"><div class="g"><div class="m">Что болит</div><div class="t" style="font-weight:400">${esc(p.pain)}</div></div></div>
+      <div class="rowt"><div class="g"><div class="m">Что видно в заявках</div><div class="t" style="font-weight:400">${esc(p.evidence)}</div></div></div>
+      <div class="rowt"><div class="g"><div class="m">Почему уходит</div><div class="t" style="font-weight:400">${esc(p.loses_us)}</div></div></div>
+    </div></div>`).join('')}</div>`).join('')}</div>
+  <div class="head"><h2>Боли, подтверждённые заявками</h2></div>
+  <div class="card"><div class="rows">${A.confirmed_pains.map(c=>`<div class="rowt"><div class="g"><div class="t">${esc(c.pain)}</div><div class="m">${esc(personaName(c.persona))} · ${esc(c.verdict)}</div>
+    <div class="bar" style="margin:8px 0 0;height:8px"><span style="width:${c.apps/mx*100}%;background:var(--blue)"></span></div></div><span class="num" style="font-size:26px">${c.apps}</span></div>`).join('')}</div>
+    <p class="sub" style="margin:12px 0 0">${esc(A.content_not_offer||'')}</p></div>
+  ${(D.research_extra?.sections||[]).map(s=>`<div class="head"><h2>${esc(s.title)}</h2></div><div class="card"><p class="sub" style="margin:0 0 10px">${esc(s.source||'')}</p><div class="rows">${(s.items||[]).map(x=>`<div class="rowt"><div class="g"><div class="t" style="font-weight:400">${esc(x.title||x)}</div>${x.note?`<div class="m">${esc(x.note)}</div>`:''}</div></div>`).join('')}</div></div>`).join('')}
+  <div class="head"><h2>Матрица болей</h2><span class="sp"></span><span class="pill">${(D.pain_map||[]).length} из Notion</span></div>
+  <div class="chips">${[['core','SME · девелопер · флиппер'],['all','Все']].concat(auds.map(a=>[a,a.replace('borrower:','').replace('partner:','партнёр: ')])).map(([k,l])=>`<button class="chip ${painAud===k?'on':''}" data-pa="${esc(k)}">${esc(l)}</button>`).join('')}</div>
+  <div class="card"><div class="tw"><table><tr><th>Боль</th><th>Цифра</th><th>Почему банк не решит</th><th>Сценарий</th><th>Источник</th></tr>
+  ${rows.map(r=>`<tr><td><b style="font-weight:500">${esc(r.pain)}</b><div class="s">${esc(r.audience)}</div></td><td class="s">${esc(r.number)}</td><td class="s">${esc(r.why_bank)}</td><td class="s">${esc(r.use_case||'')}</td><td class="s">${r.source_status==='Verified'?'проверено':`<span class="d-down">${esc(r.source_status)}</span>`}${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener">ссылка</a>`:''}</td></tr>`).join('')}</table></div></div>`;
+}
+
+// ---------------------------------------------------------------- Как устроено
+const PIPE=[
+ ['Каждое утро, сам','Робот собирает Google Search Console, GA, сайт, очередь, ключи, Telegram Макса и пересчитывает статусы статей и темы','GitHub Actions · workspace/collect.py','auto'],
+ ['Темы','Сверка ключей, спроса, болей и дайджестов с вышедшими статьями','этот экран → «Темы»','auto'],
+ ['Бриф и статья','Ресёрч Reddit и AI-запросов скриптами, DLD по первоисточнику, бриф, статья на B2, факт-чек, анти-AI и комплаенс-гейты','/nemax-insight · reddit_research.py · ai_questions.py · plain_gate.py · antiai_gate.py','claude'],
+ ['Фигуры','1–3 фигуры .nmxfig вместо простых таблиц','preview-fig-<slug>.html · build_pkg_*.py','claude'],
+ ['Обложка','Клон шаблона Figma (Guide синий / аналитика серая), 2–3 варианта, ты выбираешь','Figma 803:2 · /figma-use','you'],
+ ['Вёрстка','Пакет, кит, новая страница через коннектор Webflow, SEO, схема FAQ, витрина, обратные ссылки','/nemax-publish · wf.js · render_canon_kit.py','claude'],
+ ['Публикация','Только по твоему «ок»','wf.js publish --confirm','you'],
+ ['Индексация','Кнопка «Search Console →» у статьи, нажать «Запросить индексирование»','Google Search Console','you'],
+ ['Замер','Через 2–4 недели статья попадает в группы А–Н, просадки и взлёты — на «Сегодня»','робот','auto']];
+const SKILLS=[['nemax-insight','бриф + статья'],['nemax-b2','упрощение до B2'],['humanizer','очеловечить текст'],['nemax-publish','вёрстка и публикация'],['nemax-content','комплаенс-гейт §5'],['figma-use','обложки в Figma'],['nemax-analytics-report','недельный GA-отчёт'],['nemax-weekly-report','отчёт команде в Notion']];
+function vHow(){
+  const lab={auto:['само','up'],claude:['Claude','B'],you:['ты','rose']};
+  return `<h1>Как устроено</h1><p class="sub">Путь статьи от темы до замера. «Само» — робот без участия, «Claude» — по кнопке, «ты» — твой шаг.</p>
+  <div class="card"><div class="rows">${PIPE.map((p,k)=>`<div class="rowt"><span class="num" style="font-size:22px;width:34px">${String(k+1).padStart(2,'0')}</span><div class="g"><div class="t">${esc(p[0])}</div><div class="m">${esc(p[1])}</div><div class="m" style="color:var(--muted)">${esc(p[2])}</div></div><span class="pill ${lab[p[3]][1]}">${lab[p[3]][0]}</span></div>`).join('')}</div></div>
+  <div class="head"><h2>Скиллы</h2></div><div class="card"><div class="rows">${SKILLS.map(s=>`<a class="rowt" href="${blob('.claude/skills/'+s[0]+'/SKILL.md')}" target="_blank" rel="noopener"><div class="g"><div class="t">/${esc(s[0])}</div><div class="m">${esc(s[1])}</div></div><span class="circ">→</span></a>`).join('')}</div></div>
+  <div class="head"><h2>Где лежит правда</h2></div><div class="card"><div class="rows">
+   ${[['Реестр статей','02_WEBSITE:/seo/ARTICLE_REGISTRY.md'],['Очередь','docs/PUBLISH_QUEUE.md'],['Аудитории и боли','workspace/canon/audiences.json'],['Матрица болей (выгрузка Notion)','workspace/canon/pain_map.json'],['База ключей','02_WEBSITE:/seo/keywords_clean.csv'],['Правила статей','docs/article-canon/memory/INDEX.md'],['Робот','workspace/collect.py']].map(x=>`<a class="rowt" href="${blob(x[1])}" target="_blank" rel="noopener"><div class="g"><div class="t" style="font-weight:400">${esc(x[0])}</div><div class="m">${esc(x[1])}</div></div><span class="circ">→</span></a>`).join('')}</div></div>`;
+}
+const vMore=()=>`<h1>Ещё</h1><div class="card"><div class="rows">${NAV.filter(([k])=>!MOBILE_NAV.includes(k)).map(([k,l,s])=>`<button class="rowt" data-tab="${k}"><div class="g"><div class="t">${esc(l)}</div><div class="m">${esc(s)}</div></div><span class="circ">→</span></button>`).join('')}</div></div>`;
+
 // ---------------------------------------------------------------- оболочка
 function navHtml(){
   const badge={today:(D?D.alerts.filter(a=>a.level==='high').length:0),articles:(D?D.totals.groups.D||0:0)};
   $('#side').innerHTML=`<div class="brand">Workspace</div><div class="brand-s">NEMAX · статьи и SEO</div>`+
     NAV.map(([k,l,s])=>`<button class="sitem ${tab===k?'on':''} ${k==='instagram'?'later':''}" data-tab="${k}"><div class="a">${l}${badge[k]?`<span class="nb ${k==='articles'?'q':''}">${badge[k]}</span>`:''}</div><div class="b">${s}</div></button>`).join('')+
     `<div class="foot">${D?'Данные: '+esc(new Date(D.generated_at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):''}</div>`;
-  $('#bottom').innerHTML=NAV.slice(0,5).map(([k,l])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${l}${k==='today'&&badge.today?`<span class="nb">${badge.today}</span>`:''}</button>`).join('');
+  $('#bottom').innerHTML=NAV.filter(([k])=>MOBILE_NAV.includes(k)).concat([['more','Ещё']]).map(([k,l])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${l}${k==='today'&&badge.today?`<span class="nb">${badge.today}</span>`:''}</button>`).join('');
 }
 function render(){
   navHtml();
-  $('#view').innerHTML=({today:vToday,articles:vArticles,keywords:vKeywords,research:vResearch,queue:vQueue,instagram:vInstagram})[tab]();
+  $('#view').innerHTML=({today:vToday,ideas:vIdeas,articles:vArticles,people:vPeople,keywords:vKeywords,research:vResearch,queue:vQueue,how:vHow,more:vMore,instagram:vInstagram})[tab]();
   const r=$('#refresh'); if(r) r.onclick=refresh;
 }
 document.addEventListener('click',e=>{
-  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more]'); if(!b) return;
+  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-pa],[data-write]'); if(!b) return;
+  if(b.dataset.write!=null){startWrite(+b.dataset.write);return;}
+  if(b.dataset.if){ideaFilter=b.dataset.if;render();return;}
+  if(b.dataset.pa){painAud=b.dataset.pa;render();return;}
   if(b.dataset.more){MORE[b.dataset.more]=!MORE[b.dataset.more];render();return;}
   if(b.dataset.tab){tab=b.dataset.tab;store.set('ws_tab',tab);render();scrollTo(0,0);}
   if(b.dataset.go){tab=b.dataset.go;artFilter='all';render();scrollTo(0,0);}

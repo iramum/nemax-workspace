@@ -285,7 +285,11 @@ input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
 .dlg .chips{margin:0}
 .dlg .chip{box-shadow:inset 0 0 0 1px var(--line);height:34px}
 .dlg .chip.on{box-shadow:none}
-.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;font-size:13px;z-index:60;box-shadow:var(--sh2);max-width:calc(100vw - 32px)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;font-size:13px;z-index:60;box-shadow:var(--sh2);max-width:calc(100vw - 32px);display:flex;align-items:center;gap:14px}
+.toast .undo{border:0;background:none;color:#9FB2FF;font-weight:500;padding:0;white-space:nowrap}
+.tgp{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.tgp a{font-size:12.5px;color:var(--ink);display:flex;gap:8px;line-height:1.35}
+.tgp a .d{color:var(--muted);flex:none;width:52px}
 </style>
 </head>
 <body>
@@ -363,6 +367,7 @@ function vToday(){
     <button class="tile" data-go="articles"><span class="circ">→</span><div class="l">Показы в Google</div><div class="v num">${fmt(t.impr)}</div><div class="w">${delta(t.impr,t.impr_prev)} к прошлым 28</div><div class="s">все статьи</div></button>
     <button class="tile ${t.apply_clicks<t.apply_clicks_prev?'warm':''}" data-go="articles"><span class="circ">→</span><div class="l">Клики в заявку</div><div class="v num">${t.apply_clicks}</div><div class="w">${delta(t.apply_clicks,t.apply_clicks_prev)} к прошлым 28</div><div class="s">визитов со статей ${t.sessions} (только с согласием cookie)</div></button>
   </div>`;
+  h+=syncBanner();
   h+=calStrip();
   h+=remindersCard();
   h+=`<div class="cols"><div>
@@ -409,7 +414,7 @@ function vTodayM(){
   let h=`<div class="date" style="font-size:13px;color:var(--body);font-weight:400">${esc(today[0].toUpperCase()+today.slice(1))}</div><h1>Доброе утро, Ирина</h1>`;
   if(nw) h+=`<div class="hero"><div class="l">${esc(nw.label)}${nw.src?' · '+esc(nw.src):''}</div><div class="t">${esc(nw.title)}</div><div class="w">${esc(nw.why)}</div>
     <div class="acts">${nw.plan!=null?`<button class="btn on-blue" data-write-plan="${esc(nw.plan)}">Написать →</button>`:`<button class="btn on-blue" data-ia="write" data-ix="${nw.ix}">Написать →</button><button class="btn ghost-blue" data-ia="reject" data-ix="${nw.ix}">Отклонить</button>`}<button class="btn ghost-blue" data-tab="ideas">Другие темы</button></div></div>`;
-  h+=remindersCard();
+  h+=syncBanner()+remindersCard();
   h+=`<div class="card"><div class="ctitle">План на день<span class="sp"></span><span class="pill">${D.plan.length}</span></div>
     ${capped('mplan',D.plan,4,(p,k)=>{const a=art(p.slug);return `<button class="prow ${p.action==='gsc'?'warm':''}" data-open="${esc(p.slug)}"><span class="n">${k+1}</span><div class="g"><div class="t">${esc(planRu(p))}</div><div class="m">${esc(a.title||p.slug)}</div></div></button>`})||'<div class="empty">Срочного нет.</div>'}</div>`;
   h+=`<div class="mstats">
@@ -576,7 +581,12 @@ async function savePlan(mutate,msg){
   const doc=await saveJson(PLAN_PATH,{items:[]},d=>{d.items=d.items||[];mutate(d.items);},msg);
   return doc.items;
 }
-function toast(msg,ms=2600){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),ms);}
+function toast(msg,ms=2600,undo=null){
+  document.querySelectorAll('.toast').forEach(x=>x.remove());
+  const t=document.createElement('div');t.className='toast';t.textContent=msg;
+  if(undo){const b=document.createElement('button');b.className='undo';b.textContent='Отменить';b.onclick=()=>{undo();t.remove();toast('Отменено');};t.appendChild(b);}
+  document.body.appendChild(t);setTimeout(()=>t.remove(),ms);
+}
 const PERM_MSG='GitHub не дал записать. Ключу на этом устройстве нужно право Contents: Read and write — сделай новый ключ и вставь заново.';
 function planDialog({id,title='',date='',kind='article',slug='',ideaId=null}){
   const d=document.createElement('div'); d.className='dlg-bg';
@@ -608,8 +618,8 @@ function planDialog({id,title='',date='',kind='article',slug='',ideaId=null}){
         D.calendar=(D.calendar||[]).filter(e=>e.id!==nid);
         D.calendar.push({date:dd,kind:k==='article'?'plan':'ig',title:tt,slug:slug||null,status:'В плане',overdue:false,source:'workspace',id:nid});
         D.calendar.sort((a,b)=>a.date.localeCompare(b.date));
-        if(ideaId) await setIdea(ideaId,{status:'planned',plan_id:nid,date:dd});
-        d.remove(); render(); toast(`В плане на ${fmtDate(dd)}`);
+        const undo=ideaId?setIdea(ideaId,{status:'planned',plan_id:nid,date:dd}):null;
+        d.remove(); render(); toast(ideaId?`Тема ушла в «В плане» на ${fmtDate(dd)}`:`В плане на ${fmtDate(dd)}`,5000,undo);
       }catch(e){
         t.disabled=false;t.textContent='Сохранить';
         d.querySelector('#pl-msg').textContent=e.message==='perm'?PERM_MSG:'Не сохранилось: '+e.message;
@@ -684,10 +694,10 @@ function vCalendar(){
 }
 
 // ---------------------------------------------------------------- Темы
-const SRC={pain:['Боль из заявок','rose'],painmap:['Матрица болей','C'],keys:['Ключ без статьи','B'],gsc:['Спрос в Google','B'],telegram:['Telegram Макса','N'],masha:['Ресёрч Маши','rose'],plan:['План публикаций','A']};
+const SRC={pain:['Боль из заявок','rose'],painmap:['Матрица болей','C'],keys:['Ключ без статьи','B'],gsc:['Спрос в Google','B'],telegram:['Посты Макса','N'],masha:['Ресёрч Маши','rose'],plan:['План публикаций','A']};
 let ideaFilter='all';
 const personaName=id=>{const p=(D.audiences?.personas||[]).find(x=>x.id===id||('borrower:'+x.id)===id);return p?p.name:(id||'').replace('borrower:','');};
-function ideaTitle(i){return (i.source==='pain'||i.source==='masha')?i.cluster:(i.keyword||i.cluster||'');}
+function ideaTitle(i){return (i.source==='pain'||i.source==='masha'||i.source==='telegram')?i.cluster:(i.keyword||i.cluster||'');}
 // ---- проверка по статьям и что с темой делать
 const VERD={new:['Новая тема','up'],angle:['Близко к статье','B'],covered:['Уже есть статья','rose']};
 function verdictOf(i){return i.review?.verdict||i.check?.verdict||null;}
@@ -711,22 +721,32 @@ function tunePrompt(i,slug){
   ``,
   `Повод: тема «${ideaTitle(i)}» из вкладки «Темы» (${SRC[i.source]?.[0]||i.source}) — ${i.why}`,
   i.review?.text?`Что поправить (разбор ${fmtDate(i.review.date)}): ${i.review.text}`:'',
+  tgParts(i),
   i.check?.articles?.length?`Проверка робота: ${i.check.articles.map(x=>`/${x.slug} ${Math.round(x.score*100)}%${x.hit?` «${x.hit}»`:''}`).join('; ')}`:'',
   a.gsc?`Цифры статьи за 28 дней: ${a.gsc.clicks} кликов, ${a.gsc.impr} показов, позиция ${a.gsc.pos??'—'}, группа ${GN[a.group]||'—'}.`:'',
   ``,
   `Перед правкой: CLAUDE.md репо целиком, пакет publish_${slug}.json, docs/PUBLISH_QUEUE.md, аудит 22.11. Правку веди через очередь; цифры и законы — только по первоисточнику.`,
   `Покажи мне до/после и 🔴-пункты. Публикация только по моему «ок».`].filter(Boolean).join('\n');
 }
+// сводка постов Макса: в задание идут все новости группы и правило «одна тема, максимум две»
+function tgParts(i){
+  if(!(i.parts||[]).length) return '';
+  return [`Посты Макса, которые сведены в эту тему (${i.parts.length}):`,
+    ...i.parts.map(p=>`— ${p.date} · ${p.h} · ${p.url}`),
+    `Сначала разбери эти посты: что в них общего для нашего клиента (SME, девелопер, флиппер, handover). Сведи в ОДНУ тему; две — только если они правда не сводятся, и тогда скажи почему. Отдельной статьи на каждую новость не делаем.`,
+    `Цифры — только из первоисточника новости (релиз, отчёт, DLD), не из пересказа в дайджесте.`].join('\n');
+}
 function writePrompt(i){
   const c=i.check;
   return [`/nemax-insight`,
   `Тема: ${ideaTitle(i)}`,
-  i.keyword&&i.keyword!==ideaTitle(i)?`Ключ: ${i.keyword}`:'',
+  i.keyword&&i.keyword!==ideaTitle(i)&&i.source!=='telegram'?`Ключ: ${i.keyword}`:'',
   i.variants&&i.variants.length?`Варианты запроса: ${i.variants.join('; ')}`:'',
   `Откуда идея: ${SRC[i.source]?.[0]||i.source} — ${i.why}`,
   i.audience?`Аудитория: ${personaName(i.audience)}`:'',
   i.url?`Источник: ${i.url}`:'',
   i.review?.text?`Разбор по статьям (${fmtDate(i.review.date)}): ${i.review.text}`:'',
+  tgParts(i),
   c?`Проверка робота: ${c.verdict==='new'?'своей статьи нет':c.verdict==='covered'?'тема закрыта':'есть близкая'}${c.articles?.length?' — '+c.articles.map(x=>`/${x.slug} ${Math.round(x.score*100)}%${x.hit?` «${x.hit}»`:''}`).join('; '):''}. Пиши под углом, которого в этих статьях нет, и сошлись на них внутренними ссылками.`:'',
   ``,
   `Перед брифом: CLAUDE.md репо целиком, перегенерировать ARTICLE_REGISTRY и проверить дедуп темы, docs/PUBLISH_QUEUE.md, workspace/canon/audiences.json (основной клиент — SME/HNWI/флипперы/девелоперы/handover).`,
@@ -745,10 +765,17 @@ const IS_PATH='workspace/canon/ideas_state.json';
 let IS={};
 const hashId=s=>{let h=5381;for(const ch of s)h=((h<<5)+h+ch.codePointAt(0))|0;return 'i'+(h>>>0).toString(36);};
 const ideaId=i=>hashId((i.source||'')+'|'+ideaTitle(i));
+// решения, которые ещё не дошли до GitHub: применяются сразу (карточка уходит в тот же миг), пишутся фоном
+let PENDING={}; try{PENDING=JSON.parse(store.get('ws_ideas_pending')||'{}')||{};}catch(e){PENDING={};}
+let syncErr='', syncing=false;
+const savePending=()=>store.set('ws_ideas_pending',JSON.stringify(PENDING));
 function ideaState(i){
-  const s=IS[ideaId(i)];
+  const id=ideaId(i);
+  const s=id in PENDING?(PENDING[id]._del?null:PENDING[id]):IS[id];
   if(!s) return {status:'new'};
   if(s.status==='snoozed'&&(s.until||'')<=todayIso()) return {...s,status:'new',reminded:true};
+  // сводка постов Макса: после «отклонить»/«сделано» вышли новые посты — тема возвращается
+  if((s.status==='rejected'||s.status==='done')&&i.latest&&s.at&&i.latest>s.at) return {...s,status:'new',fresh:true};
   return s;
 }
 async function loadIdeasState(){
@@ -758,17 +785,39 @@ async function loadIdeasState(){
     IS=r.ok?(JSON.parse(b64d((await r.json()).content)).items||{}):{};
   }catch(e){IS={};}
 }
-async function setIdea(id,patch){
+const STNAME={new:'Новые',writing:'В работе',planned:'В плане',snoozed:'Отложены',rejected:'Отклонены',done:'Сделано'};
+function setIdea(id,patch){
   const i=ideasAll().find(x=>ideaId(x)===id);
+  const prev=id in PENDING?PENDING[id]:(IS[id]||{_del:1});
   const rec=patch?{...patch,title:i?ideaTitle(i):'',source:i?.source||'',at:todayIso()}:null;
-  if(LOCAL){if(rec)IS[id]=rec;else delete IS[id];toast('Локальный просмотр: в GitHub не пишу');return;}
-  const doc=await saveJson(IS_PATH,{about:'Решения по темам NEMAX Workspace',items:{}},d=>{d.items=d.items||{};if(rec)d.items[id]=rec;else delete d.items[id];},
-    `ideas: ${rec?rec.status:'вернуть'} — ${(i?ideaTitle(i):id).slice(0,60)}`);
-  IS=doc.items||{};
+  PENDING[id]=rec||{_del:1}; savePending();
+  syncPending();
+  return ()=>{PENDING[id]=prev;savePending();render();syncPending();};   // отмена
 }
-async function ideaDo(fn,okMsg){
-  try{await fn();render();if(okMsg)toast(okMsg);}
-  catch(e){toast(e.message==='perm'?PERM_MSG:'Не сохранилось: '+e.message,5000);}
+async function syncPending(){
+  const ids=Object.keys(PENDING); if(!ids.length||syncing) return;
+  if(LOCAL){ids.forEach(id=>{if(PENDING[id]._del)delete IS[id];else IS[id]=PENDING[id];});PENDING={};savePending();syncErr='';render();return;}
+  syncing=true; const batch={...PENDING};
+  try{
+    const doc=await saveJson(IS_PATH,{about:'Решения по темам NEMAX Workspace',items:{}},d=>{d.items=d.items||{};
+      for(const [id,r] of Object.entries(batch)){if(r._del)delete d.items[id];else d.items[id]=r;}},
+      `ideas: ${ids.length===1?(batch[ids[0]]._del?'вернуть':batch[ids[0]].status)+' — '+(batch[ids[0]].title||ids[0]).slice(0,60):ids.length+' решений'}`);
+    IS=doc.items||{};
+    for(const id of ids) if(JSON.stringify(PENDING[id])===JSON.stringify(batch[id])) delete PENDING[id];
+    savePending(); syncErr='';
+  }catch(e){syncErr=e.message==='perm'?PERM_MSG:'GitHub не ответил ('+e.message+'). Решение сохранено на этом устройстве, допишу в GitHub при следующем открытии.';}
+  syncing=false; render();
+  if(!syncErr&&Object.keys(PENDING).length) syncPending();
+}
+function syncBanner(){
+  const n=Object.keys(PENDING).length; if(!n||(!syncErr&&!syncing)) return '';
+  return syncErr?`<div class="err" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>${n} ${n===1?'решение':'решений'} пока только на этом устройстве.</b> ${esc(syncErr)}</div><button class="btn sm fill" data-sync="1">Повторить</button></div>`
+    :`<p class="sub" style="margin:0 0 12px">Сохраняю в GitHub…</p>`;
+}
+// решение применяется сразу: карточка уходит из списка, тосту — «Отменить»
+function ideaDo(fn,okMsg){
+  const undo=fn(); render();
+  if(okMsg) toast(okMsg,5000,typeof undo==='function'?undo:null);
 }
 function copyAndOpen(txt){
   const w=window.open('https://claude.ai/code','_blank','noopener');   // открыть сразу, пока браузер считает это нажатием
@@ -796,8 +845,8 @@ function rejectDialog(i){
       const note=d.querySelector('#rj-t').value.trim();
       if(!why&&!note){d.querySelector('#rj-msg').textContent='Выбери причину или напиши пару слов — иначе через месяц не вспомнить, почему.';return;}
       t.disabled=true;t.textContent='Сохраняю…';
-      await ideaDo(()=>setIdea(ideaId(i),{status:'rejected',reason:why||'Другое',note}),'Тема отклонена');
       d.remove();
+      ideaDo(()=>setIdea(ideaId(i),{status:'rejected',reason:why||'Другое',note}),'Тема ушла в «Отклонены»');
     }
   });
 }
@@ -818,8 +867,8 @@ function snoozeDialog(i){
     if(t.id==='sn-ok'){
       const until=d.querySelector('#sn-d').value; if(!until) return;
       t.disabled=true;t.textContent='Сохраняю…';
-      await ideaDo(()=>setIdea(ideaId(i),{status:'snoozed',until,note:d.querySelector('#sn-t').value.trim()}),`Напомню ${fmtDate(until)}`);
-      d.remove();
+      const note=d.querySelector('#sn-t').value.trim(); d.remove();
+      ideaDo(()=>setIdea(ideaId(i),{status:'snoozed',until,note}),`Тема ушла в «Отложены» — вернётся ${fmtDate(until)}`);
     }
   });
 }
@@ -833,9 +882,9 @@ function vIdeas(){
   const counts={};inSt.forEach(({i})=>counts[i.source]=(counts[i.source]||0)+1);
   if(ideaFilter!=='all'&&!counts[ideaFilter]) ideaFilter='all';
   let list=inSt.filter(({i})=>ideaFilter==='all'||i.source===ideaFilter);
-  if(ideaStatus==='new') list=list.slice().sort((a,b)=>(b.s.reminded?1:0)-(a.s.reminded?1:0)||(VORDER[verdictOf(a.i)]??0)-(VORDER[verdictOf(b.i)]??0));
+  if(ideaStatus==='new') list=list.slice().sort((a,b)=>(b.s.reminded||b.s.fresh?1:0)-(a.s.reminded||a.s.fresh?1:0)||(VORDER[verdictOf(a.i)]??0)-(VORDER[verdictOf(b.i)]??0));
   const covered=ideaStatus==='new'?list.filter(x=>verdictOf(x.i)==='covered').length:0;
-  return `<div class="topline"><div class="sp"><h1>Что написать дальше</h1></div>${updBlock()}</div>
+  return `<div class="topline"><div class="sp"><h1>Что написать дальше</h1></div>${updBlock()}</div>${syncBanner()}
   <p class="sub">Каждое утро робот сверяет каждую тему с живыми статьями — по заголовкам, ключам, разделам H2 и вопросам FAQ — и пишет, что нашёл: новая тема, близко к статье или уже закрыта. Закрытые стоят внизу и предлагают донастройку, а не новую статью. Каждое решение — «Написать», «Запланировать», «Напомнить», «Отклонить» — убирает тему из «Новых» в свою папку.</p>
   <div class="chips st">${STATUS.filter(([k])=>k==='new'||stCount[k]).map(([k,l])=>`<button class="chip ${ideaStatus===k?'on':''}" data-is="${k}">${esc(l)} · ${stCount[k]||0}</button>`).join('')}</div>
   <div class="chips src">${[['all','Все источники · '+inSt.length]].concat(Object.keys(SRC).filter(k=>counts[k]).map(k=>[k,SRC[k][0]+' · '+counts[k]])).map(([k,l])=>`<button class="chip ${ideaFilter===k?'on':''}" data-if="${k}">${esc(l)}</button>`).join('')}</div>
@@ -847,6 +896,7 @@ function vIdeas(){
 }
 function stLine(s){
   if(s.reminded) return `<div class="stline">Вернулась по напоминанию${s.note?': '+esc(s.note):''}</div>`;
+  if(s.fresh) return `<div class="stline">Вернулась: после твоего решения ${esc(fmtDate(s.at))} у Макса вышли новые посты</div>`;
   const on=s.at?` ${fmtDate(s.at)}`:'';
   if(s.status==='writing') return `<div class="stline">В работе с${on}${s.mode==='tune'&&s.slug?` · донастройка /${esc(s.slug)}`:''}</div>`;
   if(s.status==='planned') return `<div class="stline">В плане на ${esc(fmtDate(s.date))}</div>`;
@@ -873,6 +923,7 @@ function ideaCard({i,ix,s}){
     <div style="font-weight:500;font-size:16px">${esc(ideaTitle(i))}</div>
     ${i.variants&&i.variants.length?`<div class="m" style="color:var(--muted);font-size:12px;margin-top:4px">${esc(i.variants.join(' · '))}</div>`:''}
     <p class="sub" style="margin:8px 0 0">${esc(i.why)}</p>
+    ${(i.parts||[]).length?`<div class="tgp">${i.parts.map(p=>`<a href="${esc(p.url)}" target="_blank" rel="noopener"><span class="d">${esc((p.date||'').slice(8,10)+'.'+(p.date||'').slice(5,7))}</span><span>${esc(p.h)}</span></a>`).join('')}</div>`:''}
     ${i.review?.text?`<div class="rev"><div class="h">Разбор по статьям, ${esc(fmtDate(i.review.date))}</div>${esc(i.review.text)}</div>`:''}
     ${checkLines(i)}
     ${stLine(s)}
@@ -970,15 +1021,16 @@ function render(){
   const r=$('#refresh'); if(r) r.onclick=refresh;
 }
 document.addEventListener('click',e=>{
-  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-is],[data-ia],[data-pa],[data-write-plan],[data-cal],[data-calday],[data-layer],[data-href],[data-plan-new],[data-plan-from],[data-resched],[data-drawer],[data-refresh]'); if(!b) return;
+  const b=e.target.closest('[data-tab],[data-af],[data-kf],[data-open],[data-go],[data-gf],[data-more],[data-if],[data-is],[data-ia],[data-pa],[data-write-plan],[data-cal],[data-calday],[data-layer],[data-href],[data-plan-new],[data-plan-from],[data-resched],[data-drawer],[data-refresh],[data-sync]'); if(!b) return;
   if(b.dataset.drawer){drawer(b.dataset.drawer==='open');return;}
+  if(b.dataset.sync){syncErr='';syncPending();render();return;}
   if(b.dataset.refresh){drawer(false);refresh();return;}
   drawer(false);
   if(b.dataset.ia){
     const i=ideasAll()[+b.dataset.ix]; if(!i) return; const id=ideaId(i);
     ({write:()=>startIdea(i,'write'), tune:()=>startIdea(i,'tune',b.dataset.slug),
       plan:()=>planDialog({title:ideaTitle(i),kind:'article',ideaId:id}), snooze:()=>snoozeDialog(i), reject:()=>rejectDialog(i),
-      restore:()=>ideaDo(()=>setIdea(id,null),'Тема вернулась в «Новые»'), done:()=>ideaDo(()=>setIdea(id,{status:'done'}),'Отмечено: сделано')
+      restore:()=>ideaDo(()=>setIdea(id,null),'Тема вернулась в «Новые»'), done:()=>ideaDo(()=>setIdea(id,{status:'done'}),'Тема ушла в «Сделано»')
     })[b.dataset.ia]?.();
     return;
   }
@@ -1007,12 +1059,12 @@ document.addEventListener('input',e=>{if(e.target.id==='kwq'){kwQuery=e.target.v
 const LOCAL=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&new URLSearchParams(location.search).has('local');
 async function load(){
   let r;
-  if(LOCAL){ const t=new URLSearchParams(location.search).get('tab'); if(t) tab=t; D=await (await fetch('latest.json')).json(); await loadIdeasState(); $('#setup').classList.add('hide'); $('#view').classList.remove('hide'); render(); return; }
+  if(LOCAL){ const t=new URLSearchParams(location.search).get('tab'); if(t) tab=t; D=await (await fetch('latest.json')).json(); await loadIdeasState(); $('#setup').classList.add('hide'); $('#view').classList.remove('hide'); render(); syncPending(); return; }
   try{ r=await gh(`/repos/${REPO}/contents/latest.json?ref=${DATA_BRANCH}`,{accept:'application/vnd.github.raw+json'}); }
   catch(e){ showSetup('Нет связи с GitHub. Проверь интернет.'); return; }
   if(r.status===401||r.status===403){showSetup('GitHub не принял ключ. Создай новый с правами из списка.');return;}
   if(r.status===404){showSetup('Данных ещё нет, или ключ не видит iramum/NEMAX-web. Если ключ верный — данные появятся после первого запуска робота.');return;}
-  D=await r.json(); await loadIdeasState(); $('#setup').classList.add('hide'); $('#view').classList.remove('hide'); render();
+  D=await r.json(); await loadIdeasState(); $('#setup').classList.add('hide'); $('#view').classList.remove('hide'); render(); syncPending();
 }
 function showSetup(msg){$('#setup').classList.remove('hide');$('#view').classList.add('hide');$('#setupMsg').textContent=msg||'';navHtml();}
 async function refresh(){

@@ -288,6 +288,8 @@ input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
 .dlg .chips{margin:0}
 .dlg .chip{box-shadow:inset 0 0 0 1px var(--line);height:34px}
 .dlg .chip.on{box-shadow:none}
+.msg-err{display:block;background:var(--rose-pale);color:#B8374F;border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.45;font-weight:500}
+.msg-err .btn{margin-top:8px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;font-size:13px;z-index:60;box-shadow:var(--sh2);max-width:calc(100vw - 32px);display:flex;align-items:center;gap:14px}
 .toast .undo{border:0;background:none;color:#9FB2FF;font-weight:500;padding:0;white-space:nowrap}
 .tgp{margin-top:10px;display:flex;flex-direction:column;gap:4px}
@@ -308,7 +310,7 @@ input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
       <h2>Подключение — один раз</h2>
       <p class="sub" style="margin-top:8px">На этой странице нет данных. Она читает твой приватный репозиторий твоим ключом GitHub, который хранится только на этом устройстве.</p>
       <ol>
-        <li>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token.</li>
+        <li>GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token (<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">открыть сразу</a>).</li>
         <li>Repository access: только <b>iramum/NEMAX-web</b>.</li>
         <li>Permissions: <b>Contents — Read and write</b> (чтобы сохранять план), <b>Actions — Read and write</b>.</li>
         <li>Скопируй ключ и вставь ниже.</li>
@@ -331,9 +333,9 @@ const NAV=[['today','Сегодня','Твой день и что горит'],[
 const MOBILE_NAV=['today','calendar','ideas','articles','people'];
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
 const fmt=n=>Number(n||0).toLocaleString('ru-RU');
-let D=null, tab=store.get('ws_tab')||'today', artFilter='all', kwFilter='impr', kwQuery='', refreshState='';
+let D=null, tab=store.get('ws_tab')||'today', artFilter='all', kwFilter='impr', kwQuery='', refreshState='', refreshErr='';
 
 const gh=(path,opt={})=>fetch('https://api.github.com'+path,{...opt,headers:{Authorization:'Bearer '+store.get('ws_tok'),Accept:opt.accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(opt.headers||{})}});
 const blob=p=>`https://github.com/${REPO}/blob/main/${p.split('/').map(encodeURIComponent).join('/')}`;
@@ -462,7 +464,7 @@ function capped(key,items,n,fn){
   const all=MORE[key], shown=all?items:items.slice(0,n);
   return shown.map((x,k)=>fn(x,k)).join('')+(items.length>n?`<button class="btn sm ghost" data-more="${key}" style="align-self:flex-start">${all?'Свернуть':'Ещё '+(items.length-n)+' →'}</button>`:'');
 }
-function updBlock(){return `<div class="upd">Обновлено ${esc(ago(D.generated_at))}<br><button class="btn sm ${refreshState?'':'fill'}" id="refresh" ${refreshState?'disabled':''} style="margin-top:6px">${esc(refreshState||'Обновить сейчас')}</button></div>`;}
+function updBlock(){return `<div class="upd">Обновлено ${esc(ago(D.generated_at))}<br><button class="btn sm ${refreshState?'':'fill'}" id="refresh" ${refreshState?'disabled':''} style="margin-top:6px">${esc(refreshState||'Обновить сейчас')}</button>${refreshErr?`<div class="msg-err" style="margin-top:8px;text-align:left;max-width:300px">${refreshErr}</div>`:''}</div>`;}
 
 // ---------------------------------------------------------------- Статьи
 function articleCard(a){
@@ -591,6 +593,11 @@ function toast(msg,ms=2600,undo=null){
   document.body.appendChild(t);setTimeout(()=>t.remove(),ms);
 }
 const PERM_MSG='GitHub не дал записать. Ключу на этом устройстве нужно право Contents: Read and write — сделай новый ключ и вставь заново.';
+const NEWKEY_BTN='<button class="btn sm fill" data-newkey="1">Вставить новый ключ</button>';
+// заметная ошибка прямо в окне, без всплывающих сообщений; при нехватке прав — кнопка замены ключа
+function dlgErr(el,text,perm){el.classList.add('msg-err');el.innerHTML=esc(text)+(perm?'<br>'+NEWKEY_BTN:'');}
+function newKey(){store.del('ws_tok');document.querySelectorAll('.dlg-bg').forEach(x=>x.remove());showSetup('Вставь новый ключ: старый с этого устройства удалён.');}
+document.addEventListener('click',e=>{if(e.target.closest('[data-newkey]')){e.preventDefault();newKey();}});
 function planDialog({id,title='',date='',kind='article',slug='',ideaId=null}){
   const d=document.createElement('div'); d.className='dlg-bg';
   const tomorrow=iso(new Date(Date.now()+864e5));
@@ -608,7 +615,7 @@ function planDialog({id,title='',date='',kind='article',slug='',ideaId=null}){
     if(t.dataset.k){k=t.dataset.k;d.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',b===t));return;}
     if(t.id==='pl-save'){
       const tt=d.querySelector('#pl-t').value.trim(), dd=d.querySelector('#pl-d').value;
-      if(!tt||!dd){d.querySelector('#pl-msg').textContent='Нужны тема и дата.';return;}
+      if(!tt||!dd){dlgErr(d.querySelector('#pl-msg'),'Нужны тема и дата.');return;}
       t.disabled=true; t.textContent='Сохраняю…';
       if(LOCAL){d.querySelector('#pl-msg').textContent='Локальный просмотр: в GitHub не пишу.';t.disabled=false;t.textContent='Сохранить';return;}
       try{
@@ -625,7 +632,7 @@ function planDialog({id,title='',date='',kind='article',slug='',ideaId=null}){
         d.remove(); render(); toast(ideaId?`Тема ушла в «В плане» на ${fmtDate(dd)}`:`В плане на ${fmtDate(dd)}`,5000,undo);
       }catch(e){
         t.disabled=false;t.textContent='Сохранить';
-        d.querySelector('#pl-msg').textContent=e.message==='perm'?PERM_MSG:'Не сохранилось: '+e.message;
+        dlgErr(d.querySelector('#pl-msg'),e.message==='perm'?PERM_MSG:'Не сохранилось: '+e.message,e.message==='perm');
       }
     }
   });
@@ -814,7 +821,7 @@ async function syncPending(){
 }
 function syncBanner(){
   const n=Object.keys(PENDING).length; if(!n||(!syncErr&&!syncing)) return '';
-  return syncErr?`<div class="err" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>${n} ${n===1?'решение':'решений'} пока только на этом устройстве.</b> ${esc(syncErr)}</div><button class="btn sm fill" data-sync="1">Повторить</button></div>`
+  return syncErr?`<div class="err" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>${n} ${n===1?'решение':'решений'} пока только на этом устройстве.</b> ${esc(syncErr)}</div>${syncErr===PERM_MSG?NEWKEY_BTN:'<button class="btn sm fill" data-sync="1">Повторить</button>'}</div>`
     :`<p class="sub" style="margin:0 0 12px">Сохраняю в GitHub…</p>`;
 }
 // решение применяется сразу: карточка уходит из списка, тосту — «Отменить»
@@ -846,7 +853,7 @@ function rejectDialog(i){
     if(t.dataset.r){why=t.dataset.r;d.querySelectorAll('[data-r]').forEach(b=>b.classList.toggle('on',b===t));return;}
     if(t.id==='rj-ok'){
       const note=d.querySelector('#rj-t').value.trim();
-      if(!why&&!note){d.querySelector('#rj-msg').textContent='Выбери причину или напиши пару слов — иначе через месяц не вспомнить, почему.';return;}
+      if(!why&&!note){dlgErr(d.querySelector('#rj-msg'),'Выбери причину или напиши пару слов — иначе через месяц не вспомнить, почему.');return;}
       t.disabled=true;t.textContent='Сохраняю…';
       d.remove();
       ideaDo(()=>setIdea(ideaId(i),{status:'rejected',reason:why||'Другое',note}),'Тема ушла в «Отклонены»');
@@ -1015,7 +1022,7 @@ function navHtml(){
     <button class="burger" data-drawer="open" aria-label="Открыть меню"><i></i><i></i><i></i>${badge.today?`<span class="nb">${badge.today}</span>`:''}</button>`;
   $('#drawer').innerHTML=`<div class="dr-top"><div><div class="brand" style="padding:0;font-weight:500;font-size:17px">Workspace</div><div style="font-size:12px;color:var(--muted)">NEMAX · статьи и SEO</div></div><span class="sp"></span><button class="dr-x" data-drawer="close" aria-label="Закрыть меню">×</button></div>`+
     NAV.map(([k,l,s])=>`<button class="sitem ${tab===k?'on':''} ${k==='instagram'?'later':''}" data-tab="${k}"><div class="a">${l}${badge[k]?`<span class="nb ${k==='articles'?'q':''}">${badge[k]}</span>`:''}</div><div class="b">${s}</div></button>`).join('')+
-    `<div class="dr-foot">${D?'Данные обновлены '+esc(ago(D.generated_at)):''}${D&&!LOCAL?`<button class="btn ${refreshState?'':'fill'}" data-refresh="1" ${refreshState?'disabled':''}>${esc(refreshState||'Обновить сейчас')}</button>`:''}</div>`;
+    `<div class="dr-foot">${D?'Данные обновлены '+esc(ago(D.generated_at)):''}${D&&!LOCAL?`<button class="btn ${refreshState?'':'fill'}" data-refresh="1" ${refreshState?'disabled':''}>${esc(refreshState||'Обновить сейчас')}</button>`:''}${refreshErr?`<div class="msg-err" style="margin-top:8px">${refreshErr}</div>`:''}</div>`;
 }
 function drawer(open){$('#drawer').classList.toggle('open',open);$('#drawerBg').classList.toggle('open',open);document.body.style.overflow=open?'hidden':'';}
 function render(){
@@ -1071,17 +1078,17 @@ async function load(){
 }
 function showSetup(msg){$('#setup').classList.remove('hide');$('#view').classList.add('hide');$('#setupMsg').textContent=msg||'';navHtml();}
 async function refresh(){
-  refreshState='Запускаю…'; render();
+  refreshState='Запускаю…'; refreshErr=''; render();
   const started=Date.now();
   const r=await gh(`/repos/${REPO}/actions/workflows/${WF}/dispatches`,{method:'POST',body:JSON.stringify({ref:'main'}),headers:{'Content-Type':'application/json'}});
-  if(r.status!==204){refreshState='';render();alert('Робот не запустился (код '+r.status+'). Проверь, что у ключа есть право Actions — Read and write.');return;}
+  if(r.status!==204){refreshState='';refreshErr=esc('Робот не запустился (код '+r.status+'). Ключу нужно право Actions: Read and write.')+((r.status===403||r.status===404)?'<br>'+NEWKEY_BTN:'');render();return;}
   refreshState='Собираю данные… ~5 мин'; render();
   const poll=setInterval(async()=>{
     const rr=await gh(`/repos/${REPO}/actions/workflows/${WF}/runs?per_page=1&event=workflow_dispatch`);
     const run=(await rr.json()).workflow_runs?.[0];
     if(run&&new Date(run.created_at)>=started-60000&&run.status==='completed'){
       clearInterval(poll); refreshState='';
-      if(run.conclusion==='success') load(); else {render();alert('Робот завершился с ошибкой. Подробности: GitHub → Actions → workspace-collect.');}
+      if(run.conclusion==='success') load(); else {refreshErr=esc('Робот завершился с ошибкой. Подробности: GitHub → Actions → workspace-collect.');render();}
     }
   },20000);
 }

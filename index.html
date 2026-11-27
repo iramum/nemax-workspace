@@ -586,6 +586,33 @@ async function savePlan(mutate,msg){
   const doc=await saveJson(PLAN_PATH,{items:[]},d=>{d.items=d.items||[];mutate(d.items);},msg);
   return doc.items;
 }
+// План читается вживую при каждом открытии: данные робота (latest.json) собираются раз в день,
+// и без этого перенос, сделанный после сбора, после обновления страницы «пропадал».
+// Заодно: пост из «Не вышло в срок», перенесённый кнопкой на будущую дату, больше не висит
+// красным на старой дате — его место в календаре занимает запись плана.
+const normT=s=>(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+function reconcilePlan(items){
+  if(!D||!Array.isArray(items)) return;
+  const t=todayIso();
+  D.calendar=D.calendar||[];
+  for(const p of items){
+    const kind=p.kind==='ig'?'ig':'plan';
+    const ex=D.calendar.find(e=>e.id&&e.id===p.id);
+    if(ex){ if(ex.date!==p.date){ex.date=p.date;ex.overdue=p.date<t;} ex.title=p.title; }
+    else D.calendar.push({date:p.date,kind,title:p.title,slug:p.slug||null,status:'В плане',overdue:p.date<t,source:'workspace',id:p.id});
+  }
+  const ahead=new Set(items.filter(p=>p.date>=t).map(p=>normT(p.title)));
+  D.calendar=D.calendar.filter(e=>!(e.overdue&&!e.id&&ahead.has(normT(e.title))));
+  D.calendar.sort((a,b)=>a.date.localeCompare(b.date));
+}
+async function loadLivePlan(){
+  if(LOCAL) return;
+  try{
+    const r=await gh(`/repos/${REPO}/contents/${PLAN_PATH}?ref=main&t=${Date.now()}`,{cache:'no-store'});
+    if(!r.ok) return;
+    reconcilePlan((JSON.parse(b64d((await r.json()).content)).items)||[]);
+  }catch(e){}
+}
 function toast(msg,ms=2600,undo=null){
   document.querySelectorAll('.toast').forEach(x=>x.remove());
   const t=document.createElement('div');t.className='toast';t.textContent=msg;
@@ -620,14 +647,16 @@ function planDialog({id,title='',date='',kind='article',slug='',ideaId=null}){
       if(LOCAL){d.querySelector('#pl-msg').textContent='Локальный просмотр: в GitHub не пишу.';t.disabled=false;t.textContent='Сохранить';return;}
       try{
         const nid=id||('p'+Date.now().toString(36));
-        await savePlan(items=>{
+        const planItems=await savePlan(items=>{
           const ex=items.find(x=>x.id===nid);
           if(ex){ex.date=dd;ex.title=tt;ex.kind=k;(ex.moved=ex.moved||[]).push({to:dd,at:todayIso()});}
-          else items.push({id:nid,date:dd,kind:k,title:tt,slug:slug||null,created:todayIso()});
+          // тот же пост на ту же дату уже в плане (например, второе нажатие «Сохранить») — не дублировать
+          else if(!items.some(x=>x.date===dd&&normT(x.title)===normT(tt))) items.push({id:nid,date:dd,kind:k,title:tt,slug:slug||null,created:todayIso()});
         }, `plan: ${id?'перенос':'новая запись'} ${dd} — ${tt.slice(0,60)}`);
         D.calendar=(D.calendar||[]).filter(e=>e.id!==nid);
         D.calendar.push({date:dd,kind:k==='article'?'plan':'ig',title:tt,slug:slug||null,status:'В плане',overdue:false,source:'workspace',id:nid});
         D.calendar.sort((a,b)=>a.date.localeCompare(b.date));
+        reconcilePlan(planItems);
         const undo=ideaId?setIdea(ideaId,{status:'planned',plan_id:nid,date:dd}):null;
         d.remove(); render(); toast(ideaId?`Тема ушла в «В плане» на ${fmtDate(dd)}`:`В плане на ${fmtDate(dd)}`,5000,undo);
       }catch(e){
@@ -1074,7 +1103,7 @@ async function load(){
   catch(e){ showSetup('Нет связи с GitHub. Проверь интернет.'); return; }
   if(r.status===401||r.status===403){showSetup('GitHub не принял ключ. Создай новый с правами из списка.');return;}
   if(r.status===404){showSetup('Данных ещё нет, или ключ не видит iramum/NEMAX-web. Если ключ верный — данные появятся после первого запуска робота.');return;}
-  D=await r.json(); await loadIdeasState(); $('#setup').classList.add('hide'); $('#view').classList.remove('hide'); render(); syncPending();
+  D=await r.json(); await loadIdeasState(); await loadLivePlan(); $('#setup').classList.add('hide'); $('#view').classList.remove('hide'); render(); syncPending();
 }
 function showSetup(msg){$('#setup').classList.remove('hide');$('#view').classList.add('hide');$('#setupMsg').textContent=msg||'';navHtml();}
 async function refresh(){

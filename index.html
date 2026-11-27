@@ -6,8 +6,8 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#F4F5F9">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Workspace">
-<title>NEMAX Workspace</title>
+<meta name="apple-mobile-web-app-title" content="Content Space">
+<title>Content NEMAX Space</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23002CD2'/%3E%3Ctext x='32' y='45' font-family='Helvetica,Arial,sans-serif' font-size='40' font-weight='500' fill='white' text-anchor='middle'%3EW%3C/text%3E%3C/svg%3E">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -778,6 +778,7 @@ function tgParts(i){
 function writePrompt(i){
   const c=i.check;
   return [`/nemax-insight`,
+  `Репозиторий: iramum/NEMAX-web (статьи). Если /nemax-insight не найден — сессия открыта не на том репо: остановись и скажи мне.`,
   `Тема: ${ideaTitle(i)}`,
   i.keyword&&i.keyword!==ideaTitle(i)&&i.source!=='telegram'?`Ключ: ${i.keyword}`:'',
   i.variants&&i.variants.length?`Варианты запроса: ${i.variants.join('; ')}`:'',
@@ -788,7 +789,7 @@ function writePrompt(i){
   tgParts(i),
   c?`Проверка робота: ${c.verdict==='new'?'своей статьи нет':c.verdict==='covered'?'тема закрыта':'есть близкая'}${c.articles?.length?' — '+c.articles.map(x=>`/${x.slug} ${Math.round(x.score*100)}%${x.hit?` «${x.hit}»`:''}`).join('; '):''}. Пиши под углом, которого в этих статьях нет, и сошлись на них внутренними ссылками.`:'',
   ``,
-  `Перед брифом: CLAUDE.md репо целиком, перегенерировать ARTICLE_REGISTRY и проверить дедуп темы, docs/PUBLISH_QUEUE.md, workspace/canon/audiences.json (основной клиент — SME/HNWI/флипперы/девелоперы/handover).`,
+  `Перед брифом: CLAUDE.md репо целиком, docs/article-canon/memory/INDEX.md и ⛔-правила, блок «Канон продукта» в /nemax-insight, перегенерировать ARTICLE_REGISTRY и проверить дедуп темы, docs/PUBLISH_QUEUE.md, workspace/canon/audiences.json. Клиентов два: частный владелец, кому деньги нужны к дате, и SME / срочный bridge.`,
   `Если тема уже закрыта живой статьёй — скажи и предложи донастройку вместо новой.`,
   `После брифа остановись и покажи мне 🔴-пункты. Обложку — 2–3 варианта в Figma на выбор. Публикация только по моему «ок».`].filter(Boolean).join('\n');
 }
@@ -1026,7 +1027,8 @@ const PIPE=[
  ['Публикация','Только по твоему «ок»','wf.js publish --confirm','you'],
  ['Индексация','Кнопка «Search Console →» у статьи, нажать «Запросить индексирование»','Google Search Console','you'],
  ['Замер','Через 2–4 недели статья попадает в группы А–Н, просадки и взлёты — на «Сегодня»','робот','auto']];
-const SKILLS=[['nemax-insight','бриф + статья'],['nemax-b2','упрощение до B2'],['humanizer','очеловечить текст'],['nemax-publish','вёрстка и публикация'],['nemax-content','комплаенс-гейт §5'],['figma-use','обложки в Figma'],['nemax-analytics-report','недельный GA-отчёт'],['nemax-weekly-report','отчёт команде в Notion']];
+// 25.11: в списке только скиллы, которые лежат в iramum/NEMAX-web/.claude/skills (figma-use — из коннектора Figma, отчёты — на Mac: их ссылки вели в 404)
+const SKILLS=[['nemax-insight','бриф + статья'],['nemax-b2','упрощение до B2'],['humanizer','очеловечить текст'],['nemax-publish','вёрстка и публикация'],['nemax-content','комплаенс-гейт §5']];
 function vHow(){
   const lab={auto:['само','up'],claude:['Claude','B'],you:['ты','rose']};
   return `<h1>Как устроено</h1><p class="sub">Путь статьи от темы до замера. «Само» — робот без участия, «Claude» — по кнопке, «ты» — твой шаг.</p>
@@ -1042,14 +1044,14 @@ const vMore=()=>`<h1>Ещё</h1><div class="card"><div class="rows">${NAV.filter
 // ---------------------------------------------------------------- оболочка
 function navHtml(){
   const badge={today:(D?D.alerts.filter(a=>a.level==='high').length:0),articles:(D?D.totals.groups.D||0:0),ideas:(D?remindersDue().length:0)};
-  $('#side').innerHTML=`<div class="brand">Workspace</div><div class="brand-s">NEMAX · статьи и SEO</div>`+
+  $('#side').innerHTML=`<div class="brand">Content Space</div><div class="brand-s">NEMAX · статьи и SEO</div>`+
     NAV.map(([k,l,s])=>`<button class="sitem ${tab===k?'on':''} ${k==='instagram'?'later':''}" data-tab="${k}"><div class="a">${l}${badge[k]?`<span class="nb ${k==='articles'?'q':''}">${badge[k]}</span>`:''}</div><div class="b">${s}</div></button>`).join('')+
     `<div class="foot">${D?'Данные: '+esc(new Date(D.generated_at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):''}</div>`;
   $('#bottom').innerHTML=NAV.filter(([k])=>MOBILE_NAV.includes(k)).concat([['more','Ещё']]).map(([k,l])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${l}${k==='today'&&badge.today?`<span class="nb">${badge.today}</span>`:''}</button>`).join('');
-  const cur=(NAV.find(([k])=>k===tab)||['','Workspace'])[1];
-  $('#topbar').innerHTML=`<div class="tb-t"><div class="tb-a">${esc(cur)}</div><div class="tb-b">NEMAX Workspace${D?' · '+esc(ago(D.generated_at)):''}</div></div>
+  const cur=(NAV.find(([k])=>k===tab)||['','Content Space'])[1];
+  $('#topbar').innerHTML=`<div class="tb-t"><div class="tb-a">${esc(cur)}</div><div class="tb-b">Content NEMAX Space${D?' · '+esc(ago(D.generated_at)):''}</div></div>
     <button class="burger" data-drawer="open" aria-label="Открыть меню"><i></i><i></i><i></i>${badge.today?`<span class="nb">${badge.today}</span>`:''}</button>`;
-  $('#drawer').innerHTML=`<div class="dr-top"><div><div class="brand" style="padding:0;font-weight:500;font-size:17px">Workspace</div><div style="font-size:12px;color:var(--muted)">NEMAX · статьи и SEO</div></div><span class="sp"></span><button class="dr-x" data-drawer="close" aria-label="Закрыть меню">×</button></div>`+
+  $('#drawer').innerHTML=`<div class="dr-top"><div><div class="brand" style="padding:0;font-weight:500;font-size:17px">Content Space</div><div style="font-size:12px;color:var(--muted)">NEMAX · статьи и SEO</div></div><span class="sp"></span><button class="dr-x" data-drawer="close" aria-label="Закрыть меню">×</button></div>`+
     NAV.map(([k,l,s])=>`<button class="sitem ${tab===k?'on':''} ${k==='instagram'?'later':''}" data-tab="${k}"><div class="a">${l}${badge[k]?`<span class="nb ${k==='articles'?'q':''}">${badge[k]}</span>`:''}</div><div class="b">${s}</div></button>`).join('')+
     `<div class="dr-foot">${D?'Данные обновлены '+esc(ago(D.generated_at)):''}${D&&!LOCAL?`<button class="btn ${refreshState?'':'fill'}" data-refresh="1" ${refreshState?'disabled':''}>${esc(refreshState||'Обновить сейчас')}</button>`:''}${refreshErr?`<div class="msg-err" style="margin-top:8px">${refreshErr}</div>`:''}</div>`;
 }
